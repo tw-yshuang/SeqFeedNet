@@ -11,7 +11,7 @@ class CDNet2014Preprocess:
     PXL_VAL_STATIC = 0
     PXL_VAL_SHADOW = 50
     PXL_VAL_NONROI = 85
-    PXL_VAL_UNKNOWN = 170  # ! Belong NONROI
+    PXL_VAL_UNKNOWN = 170
     PXL_VAL_MOVING = 255
 
     def __init__(self, image_size: Tuple[int] | None = None, isShadowFG=False, eps=5) -> None:
