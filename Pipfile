@@ -6,6 +6,8 @@ name = "pypi"
 [packages]
 opencv-python = "*"
 numpy = "*"
+einops = "*"
+easydict = "*"
 
 [dev-packages]
 

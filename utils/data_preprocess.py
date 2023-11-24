@@ -20,12 +20,12 @@ class CDNet2014Preprocess:
         self.eps = eps
 
     def __call__(self, gt: np.ndarray) -> np.ndarray:
-        label = np.float32(gt if self.image_size == None else cv2.resize(gt, dsize=self.image_size))
+        label = np.float32(gt if self.image_size == None else cv2.resize(gt, dsize=self.image_size, interpolation=cv2.INTER_NEAREST))
 
+        label[label < self.PXL_VAL_SHADOW - self.eps] = 0.0
         if self.isShadowFG:
             label[np.where((label <= self.PXL_VAL_SHADOW + self.eps) & (label >= self.PXL_VAL_SHADOW - self.eps))] = 1.0
 
-        label[label < self.PXL_VAL_SHADOW - self.eps] = 0.0
         label[label > self.PXL_VAL_MOVING - self.eps] = 1.0
         label[label > 1.0] = -1.0
 
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     print(len(filenames))
 
     # ! Test for CDNet2014
-    data_processes = CDNet2014Preprocess(image_size=(244, 244), isShadowFG=False, eps=5)  # all pass
+    data_processes = CDNet2014Preprocess(image_size=(244, 244), isShadowFG=True, eps=3)  # all pass
     for i, filename in enumerate([filenames[9842], filenames[26842], filenames[65697], filenames[115181], filenames[125681]]):
         print(filename)
         img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
