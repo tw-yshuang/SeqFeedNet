@@ -32,7 +32,7 @@ class CDNet2014OneCategory:
 
         for video_str in self.ls:
             for sub_dir, extension, dir_path, cate_paths in zip(
-                ['groundtruth/', 'input/', '*', '*'],
+                ['groundtruth/', 'input/', '', ''],
                 ['png', *['jpg'] * 3],
                 [self.currentFrDir, self.currentFrDir, self.emptyBgDir, self.recentBgDir],
                 [self.groundtruth_paths, self.input_paths, self.emptyBg_paths, self.recentBg_paths],
@@ -65,5 +65,5 @@ class CDNet2014Dataset:
 
 if __name__ == '__main__':
     dataset = CDNet2014Dataset(dataset_category=datasets_tr, cross_set=5)
-    print(dataset.baseline.groundtruth_paths)
-    print(len(dataset.baseline.groundtruth_paths))
+    print(dataset.baseline.emptyBg_paths)
+    print(len(dataset.baseline.emptyBg_paths))
