@@ -83,10 +83,7 @@ datasets_test = {
         'nightVideos': ['bridgeEntry', 'busyBoulvard'],
         'PTZ': ['continuousPan'],
         'shadow': ['copyMachine'],
-        'thermal': [
-            'corridor',
-            'lakeSide',
-        ],
+        'thermal': ['corridor', 'lakeSide'],
         'turbulence': ['turbulence0'],
     },
     2: {
