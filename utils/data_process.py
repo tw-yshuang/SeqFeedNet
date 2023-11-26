@@ -6,7 +6,8 @@ import numpy as np
 import cv2
 import torch
 from numpy.typing import NDArray
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, random_split
+from torchvision import transforms
 
 if __name__ == '__main__':
     import sys
@@ -15,6 +16,8 @@ if __name__ == '__main__':
 
 from submodules.UsefulFileTools.FileOperator import get_filenames, str_format
 from cross_validation_config import datasets_tr, datasets_test
+from utils.data_preprocess import CDNet2014Preprocess
+from utils.transforms import CustomCompose
 
 
 currentFrDir = 'Data/currentFr'
@@ -93,19 +96,32 @@ class CDNet2014Dataset(Dataset):
         self,
         cv_dict: Dict[str, Dict[str, List[str]]] = datasets_tr,
         cv_set: int = 0,
-        cfg: DatasetConfig = DatasetConfig(),
+        cfg: DatasetConfig | None = None,
+        transforms_cpu: CustomCompose | transforms.Compose = None,
+        isShadowFG: bool = False,
+        isTrain: bool = True,
     ) -> None:
         self.cv_dict = cv_dict[cv_set]  # from cross_validation_config.py
-        self.cfg = cfg
-        self.gap = self.cfg.gap_range[0]
+        self.transforms_cpu = transforms_cpu
+        self.preprocess = CDNet2014Preprocess(isShadowFG=isShadowFG)
+        self.isTrain = isTrain
 
         self.categories = [CDNet2014OneCategory(name=k, ls=v) for k, v in self.cv_dict.items()]
-
-        gap_steps = self.cfg.gap_range[-1] // self.cfg.next_stage + 1
-        self.gap_arr: NDArray[np.int16] = np.linspace(*self.cfg.gap_range, gap_steps, dtype=np.int16)
-
         self.data_infos: List[Tuple[CDNet2014OneCategory, CDNet2014OneVideo, int]] = []  # [(cate, video, frame_inROI_id)...]
-        self.__collect_training_data()
+
+        error_msg = "The type of {} must be {} when is in the {} mode."
+        if self.isTrain:
+            assert isinstance(cfg, DatasetConfig), error_msg.format('cfg', DatasetConfig, 'training')
+            assert isinstance(transforms_cpu, CustomCompose), error_msg.format('transforms_cpu', CustomCompose, 'training')
+
+            self.cfg = cfg
+            self.gap = self.cfg.gap_range[0]
+            gap_steps = self.cfg.gap_range[-1] // self.cfg.next_stage + 1
+            self.gap_arr: NDArray[np.int16] = np.linspace(*self.cfg.gap_range, gap_steps, dtype=np.int16)
+            self.__collect_training_data()
+        else:
+            assert isinstance(transforms_cpu, transforms.Compose), error_msg.format('transforms_cpu', transforms.Compose, 'testing')
+            self.__collect_testing_data()
 
     def __collect_training_data(self):
         sample4oneVideo = self.cfg.sample4oneVideo
@@ -115,25 +131,40 @@ class CDNet2014Dataset(Dataset):
                 idxs = sorted(random.sample(range(len(video.inputPaths_inROI)), k=sample4oneVideo))
                 self.data_infos = [*self.data_infos, *list(zip([cate] * sample4oneVideo, [video] * sample4oneVideo, idxs))]
 
+    def __collect_testing_data(self):
+        for cate in self.categories:
+            for video in cate.videos:
+                self.data_infos.append((cate, video, None))
+
     def __getitem__(self, idx: int) -> Any:
         features: torch.Tensor
-        frames: np.ndarray
-        labels: np.ndarray
+        frames: torch.Tensor
+        labels: torch.Tensor
 
         cate, video, frame_id = self.data_infos[idx]
+        features = torch.from_numpy(self.__get_features(video).transpose(0, 3, 1, 2)).type(torch.float32) / 255
+
+        if not self.isTrain:
+            return (cate, video), features, self.__getitem4testIter(video)
 
         frame_ids = self.__get_frameIDs(video, frame_id)
         frame_ls = []
         label_ls = []
         for i in frame_ids:
             frame_ls.append(cv2.imread(video.inputPaths_inROI[i], cv2.COLOR_BGR2RGB))
-            label_ls.append(cv2.imread(video.gtPaths_inROI[i], cv2.IMREAD_GRAYSCALE))
+            label_ls.append(np.expand_dims(self.preprocess(cv2.imread(video.gtPaths_inROI[i], cv2.IMREAD_GRAYSCALE)), axis=-1))
 
-        frames = np.concatenate(frame_ls, axis=self.cfg.concat_axis)  #! Error: shape is wrong!!
-        labels = np.concatenate(label_ls, axis=self.cfg.concat_axis)
-        features = self.__get_features(video)
+        frames = torch.from_numpy(np.stack(frame_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
+        labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
 
-        return features, frames, labels
+        return (cate, video), *self.transforms_cpu(features, frames, labels)  # video_info, features, frames, labels
+
+    def __getitem4testIter(self, video: CDNet2014OneVideo):
+        for input_path, gt_path in zip(video.inputPaths_inROI, video.gtPaths_inROI):
+            frame = cv2.imread(input_path, cv2.COLOR_BGR2RGB).transpose(2, 0, 1)
+            frame = torch.from_numpy(np.expand_dims(frame, axis=0)).type(torch.float32) / 255.0
+            label = torch.from_numpy(np.expand_dims(self.preprocess(cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)), axis=(0, 1)))
+            yield self.transforms_cpu(frame), self.transforms_cpu(label)
 
     # *dataset selecting strategy
     def __get_frameIDs(self, video: CDNet2014OneVideo, start_id: int) -> List[int]:
@@ -149,11 +180,11 @@ class CDNet2014Dataset(Dataset):
 
         return frame_ids
 
-    def __get_features(self, video: CDNet2014OneVideo, mean=0, std=180):
+    def __get_features(self, video: CDNet2014OneVideo, mean=0, std=128):
         f0 = cv2.imread(random.choice(video.emptyBgPaths), cv2.COLOR_BGR2RGB)
         f1 = f0 + np.random.normal(0, 180, f0.shape)
 
-        return np.concatenate([f0, f1], axis=self.cfg.concat_axis)
+        return np.stack([f0, f1])
 
     def next_frame_gap(self, epoch: int = 1):
         self.gap = self.gap_arr[epoch // self.cfg.next_stage]
@@ -162,8 +193,50 @@ class CDNet2014Dataset(Dataset):
         return len(self.data_infos)
 
 
+def get_dataloader(
+    dataset_cfg: DatasetConfig = DatasetConfig(),
+    cv_set: int = 1,
+    dataset_rate=1.0,
+    batch_size: int = 32,
+    num_workers: int = 8,
+    pin_memory: bool = False,
+    compose: CustomCompose | transforms.Compose = None,
+    label_isShadowFG: bool = False,
+    **kwargs,
+):
+    assert isinstance(compose, (CustomCompose)), "compose must be CustomCompose or transforms.Compose"
+
+    dataset = CDNet2014Dataset(datasets_tr, cv_set, dataset_cfg, compose, isTrain=True)
+    train_len = int(len(dataset) * dataset_rate)
+    train_set, val_set = random_split(dataset, [train_len, len(dataset) - train_len])
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
+
+    test_dataset = CDNet2014Dataset(datasets_test, cv_set, dataset_cfg)
+
+    return train_set, val_set, train_loader, val_loader
+
+
 if __name__ == '__main__':
-    dataset = CDNet2014Dataset(cv_dict=datasets_tr, cv_set=5, cfg=DatasetConfig())
+    from utils.transforms import RandomCrop, RandomResizedCrop
+
+    trans = CustomCompose(
+        [
+            # transforms.ToTensor(), # already converted in the __getitem__()
+            transforms.RandomCrop(size=(224, 224)),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+
+    # ! need pop error
+    # trans = transforms.Compose(
+    #     [
+    #         transforms.RandomCrop(size=(224, 224)),
+    #         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    #     ]
+    # )
+
+    dataset = CDNet2014Dataset(cv_dict=datasets_tr, cv_set=5, cfg=DatasetConfig(), transforms_cpu=trans)
 
     print(dataset.categories[0].name)
     print(dataset.categories[0].videos[0].name)
@@ -172,4 +245,33 @@ if __name__ == '__main__':
     print(dataset.data_infos)
     print(len(dataset.data_infos))
 
-    a, b, c = iter(dataset)
+    info, features, frames, labels = next(iter(dataset))
+    print(info)
+    print(frames)
+    print(features)
+    print(labels)
+
+    # =============================
+
+    trans = transforms.Compose(
+        [
+            transforms.Resize(size=(244, 244)),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+
+    # # ! need pop error
+    # trans = CustomCompose(
+    #     [
+    #         transforms.RandomCrop(size=(224, 224)),
+    #         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    #     ]
+    # )
+
+    data_test = CDNet2014Dataset(cv_dict=datasets_test, cv_set=5, transforms_cpu=trans, isTrain=False)
+    info, features, iterFandL = next(iter(data_test))
+
+    print(info)
+    print(features)
+    for i, (frame, label) in enumerate(iterFandL):
+        print(i)
