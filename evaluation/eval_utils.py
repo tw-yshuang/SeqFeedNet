@@ -94,7 +94,6 @@ class VideosData:
                 print(f"Error | vid: {vid}")
                 exit()
         tp, fp, tn, fn = cls.vid_matrix[vid]
-        print(f"count: {cls.vid_matrix[vid]}")
         prec = tp / (tp + fp) if (tp + fp) != 0 else float("nan")
         recall = tp / (tp + fn) if (tp + fn) != 0 else float("nan")
         fnr = 1 - recall
