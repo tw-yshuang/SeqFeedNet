@@ -52,7 +52,7 @@ class LASIESTAPreprocess:
         
         fg_area = np.zeros_like(label).astype(bool)
         for gv in OBJs_gray: 
-            print(f'Low : {gv - self.eps} | High : {gv + self.eps}')
+            # print(f'Low : {gv - self.eps} | High : {gv + self.eps}')
             fg_area = fg_area |  ((label >= gv - self.eps) & (label <= gv + self.eps))
         
         label[label >= self.MOVING2STATIC[0] - self.eps] = 0.0
@@ -71,21 +71,6 @@ if __name__ == '__main__':
     PROJECT_DIR = Path(__file__).resolve().parents[1]
     sys.path.append(str(PROJECT_DIR))
 
-<<<<<<< HEAD
-    filename = "./I_SI_01-GT_82.png"
-
-    # ! Test for Lasiesta
-    data_processes = LASIESTAPreprocess(image_size=(244, 244))  # all pass
-    img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
-    convert_img = data_processes(img)
-    print(np.any(convert_img == 0.0), np.any(convert_img == 1.0), np.any(convert_img == -1.0))
-    convert_img[convert_img == -1] = 127
-    convert_img[convert_img == 1] = 255
-    
-    img = cv2.imread('./I_SI_01-82.bmp')    
-    cv2.imwrite(f'resize.png', cv2.resize(img, (244,244)))
-    cv2.imwrite(f'convert.png', convert_img)
-=======
     from submodules.UsefulFileTools.FileOperator import get_filenames
 
     filenames = sorted(get_filenames('Data/CDNet2014/**/groundtruth', '*.png'))
@@ -103,4 +88,3 @@ if __name__ == '__main__':
         convert_img[convert_img == 1] = 255
         cv2.imwrite(f'out/test/original_{i}.png', img)
         cv2.imwrite(f'out/test/convert_{i}.png', convert_img)
->>>>>>> 063fdc53b8ba69ff741543db43947d2801e0060a
