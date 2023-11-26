@@ -213,7 +213,6 @@ def get_dataloader(
     num_workers: int = 8,
     pin_memory: bool = False,
     train_transforms_cpu: CustomCompose = None,
-    test_transforms_cpu: transforms.Compose = None,
     label_isShadowFG: bool = False,
     **kwargs,
 ):
@@ -226,9 +225,7 @@ def get_dataloader(
     else:
         val_loader = None
 
-    test_set = CDNet2014Dataset(datasets_test, cv_set, None, test_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=False)
-
-    return train_loader, val_loader, test_set
+    return train_loader, val_loader
 
 
 if __name__ == '__main__':
@@ -242,7 +239,7 @@ if __name__ == '__main__':
         ]
     )
 
-    # ! need pop error
+    # # ! need pop error
     # trans = transforms.Compose(
     #     [
     #         transforms.RandomCrop(size=(224, 224)),
@@ -307,7 +304,7 @@ if __name__ == '__main__':
         ]
     )
 
-    train_loader, val_loader, test_set = get_dataloader(
+    train_loader, val_loader = get_dataloader(
         dataset_cfg=cfg,
         cv_set=5,
         dataset_rate=1,
@@ -327,6 +324,7 @@ if __name__ == '__main__':
             print(frames)
             print(labels)
 
+    test_set = CDNet2014Dataset(datasets_test, 5, None, test_trans, isShadowFG=False, isTrain=False)
     for i, (video_info, features, iterFandL) in enumerate(test_set):
         print(f"test: {i}")
         if i == 0:
