@@ -38,6 +38,15 @@ class DatasetConfig:
 
 class CDNet2014OneVideo:
     def __init__(self, cate_name: str, name: str) -> None:
+        """
+        The above function initializes an object with various attributes and loads paths based on the given
+        category name.
+
+        Args:
+          cate_name (str): The `cate_name` parameter is a string that represents the category name. It is
+        used to specify the category directory where the data is stored.
+          name (str): The `name` parameter is a string that represents the name of the object or category.
+        """
         self.name = name
         self.id = VID2ID[self.name]
 
@@ -86,6 +95,14 @@ class CDNet2014OneVideo:
 
 class CDNet2014OneCategory:
     def __init__(self, name: str, ls: List[str]) -> None:
+        """
+        The function initializes an object with a name, ID, and a list of videos.
+
+        Args:
+          name (str): The `name` parameter is a string that represents the name of the object being
+        initialized.
+          ls (List[str]): The parameter `ls` is a list of strings. Each string represents a video.
+        """
         self.name = name
         self.id = CAT2ID[self.name]
         self.videos = [CDNet2014OneVideo(self.name, video_str) for video_str in ls]
@@ -104,6 +121,26 @@ class CDNet2014Dataset(Dataset):
         isShadowFG: bool = False,
         isTrain: bool = True,
     ) -> None:
+        """
+        This function initializes a dataset object for training or testing purposes, based on the
+        provided parameters.
+
+        Args:
+          cv_dict (Dict[str, Dict[str, List[str]]]): `cv_dict` is a dictionary that contains
+        cross-validation datasets. It has the following structure:
+          cv_set (int): The `cv_set` parameter is an integer that represents the cross-validation set to
+        use. It is used to select a specific subset of data from the `cv_dict` dictionary. Defaults to 0
+          cfg (DatasetConfig | None): The `cfg` parameter is an instance of the `DatasetConfig` class. It
+        is used to configure the dataset for training.
+          transforms_cpu (CustomCompose | transforms.Compose): The `transforms_cpu` parameter is used to
+        specify the transformations to be applied to the data. It can be either an instance of the
+        `CustomCompose` class or an instance of the `transforms.Compose` class. These classes are
+        typically used in PyTorch for defining a sequence of transformations to be
+          isShadowFG (bool): isShadowFG is a boolean flag that indicates whether to include shadow
+        foreground in the dataset. Defaults to False
+          isTrain (bool): A boolean flag indicating whether the code is being executed in training mode
+        or not. Defaults to True
+        """
         self.cv_dict = cv_dict[cv_set]  # from cross_validation_config.py
         self.transforms_cpu = transforms_cpu
         self.preprocess = CDNet2014Preprocess(isShadowFG=isShadowFG)
@@ -156,13 +193,9 @@ class CDNet2014Dataset(Dataset):
         frame_ids = self.__get_frameIDs(video, frame_id)
         frame_ls = []
         label_ls = []
-        try:
-            for i in frame_ids:
-                frame_ls.append(cv2.imread(video.inputPaths_inROI[i], cv2.COLOR_BGR2RGB))
-                label_ls.append(np.expand_dims(self.preprocess(cv2.imread(video.gtPaths_inROI[i], cv2.IMREAD_GRAYSCALE)), axis=-1))
-        except IndexError:
-            print(frame_ids, len(video.inputPaths_inROI))
-            exit()
+        for i in frame_ids:
+            frame_ls.append(cv2.imread(video.inputPaths_inROI[i], cv2.COLOR_BGR2RGB))
+            label_ls.append(np.expand_dims(self.preprocess(cv2.imread(video.gtPaths_inROI[i], cv2.IMREAD_GRAYSCALE)), axis=-1))
 
         frames = torch.from_numpy(np.stack(frame_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
         labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
@@ -199,6 +232,13 @@ class CDNet2014Dataset(Dataset):
         return np.stack([f0, f1])
 
     def next_frame_gap(self, epoch: int = 1):
+        """
+        The function updates the value of the "gap" attribute based on the current epoch and the
+        "next_stage" value from the configuration.
+
+        Args:
+          epoch (int): The epoch parameter represents the current epoch number. Defaults to 1
+        """
         self.gap = self.gap_arr[epoch // self.cfg.next_stage]
 
     def __len__(self):
