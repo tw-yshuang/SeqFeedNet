@@ -45,7 +45,7 @@ class CustomCompose:
 
 
 class IterativeCustomCompose:
-    def __init__(self, transforms: List[Callable], transform_img_size=(512, 512), device: str = 'cuda') -> None:
+    def __init__(self, transforms: List[Callable], transform_img_size=(224, 224), device: str = 'cuda') -> None:
         '''
         transform_img_size: (H, W)
         '''
@@ -53,18 +53,20 @@ class IterativeCustomCompose:
         self.transform_img_size = transform_img_size
         self.device = device
 
-    def __call__(self, batch_imgs: torch.Tensor, batch_coordXYs: Union[torch.Tensor, None] = None):
-        process_batch_imgs = torch.zeros((*batch_imgs.shape[0:3], *self.transform_img_size), dtype=torch.float32).to(self.device)
+    def __call__(self, batch_features: torch.Tensor, batch_frames: torch.Tensor, batch_labels: torch.Tensor | None = None):
+        process_batch_features = torch.zeros((*batch_features.shape[0:3], *self.transform_img_size), dtype=torch.float32).to(
+            self.device
+        )
+        process_batch_frames = torch.zeros((*batch_frames.shape[0:3], *self.transform_img_size), dtype=torch.float32).to(self.device)
+        process_batch_labels = torch.zeros((*batch_labels.shape[0:3], *self.transform_img_size), dtype=torch.float32).to(self.device)
 
-        imgs: torch.Tensor
-        coordXYs: torch.Tensor
-        for i, (imgs, coordXYs) in enumerate(zip(batch_imgs, batch_coordXYs)):
-            if coordXYs.sum() != 0:
-                process_batch_imgs[i], batch_coordXYs[i] = self.compose(imgs, coordXYs)
-            else:
-                process_batch_imgs[i] = self.compose(imgs, None)[0]
+        features: torch.Tensor
+        frames: torch.Tensor
+        labels: torch.Tensor
+        for i, (features, frames, labels) in enumerate(zip(batch_features, batch_frames, batch_labels)):
+            process_batch_features[i], process_batch_frames[i], process_batch_labels[i] = self.compose(features, frames, labels)
 
-        return process_batch_imgs, batch_coordXYs
+        return process_batch_features, process_batch_frames, process_batch_labels
 
     def __repr__(self) -> str:
         format_string = self.__class__.__name__ + "("
