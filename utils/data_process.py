@@ -373,4 +373,5 @@ if __name__ == '__main__':
         for j, (frame, label) in enumerate(iterFandL):
             print(f"iter: {j}")
             if j == 0:
-                print()
+                print(frame)
+                print(label)

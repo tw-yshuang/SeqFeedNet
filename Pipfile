@@ -10,8 +10,12 @@ einops = "*"
 easydict = "*"
 rich = "*"
 tqdm = "*"
+pandas = "*"
+packaging = "*"
 
 [dev-packages]
+torch-tb-profiler = "*"
+tensorboard = "*"
 
 [requires]
 python_version = "3.10"

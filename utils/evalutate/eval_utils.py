@@ -1,5 +1,10 @@
+from typing import Dict, List, Callable
+
+import pandas as pd
 import torch
 from torch import nn
+from torch.nn import functional as F
+from torch.utils.tensorboard import SummaryWriter
 
 if __name__ == '__main__':
     import sys
@@ -7,59 +12,14 @@ if __name__ == '__main__':
 
     sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from utils.DataID_MatchTable import ID2VID, ID2CAT, VID2ID, CAT2ID
+from utils.DataID_MatchTable import VID2ID, CAT2ID, ID2VID, ID2CAT
+from utils.evalutate.accuracy import calculate_acc_metrics
+from utils.evalutate.losses import jaccard_loss
 
 
-class VideosData:
-    id2vid = ID2VID
-    vid2id = VID2ID
-
-    id2cat = ID2CAT
-    cat2id = CAT2ID
-
-    vid_matrix: dict[int : torch.Tensor] = dict()
-
-    @classmethod
-    def save_result(cls, result: torch.Tensor) -> None:
-        for feature in result:
-            vid_indx = feature[-1].item()
-            if cls.vid_matrix.get(vid_indx, None) is None:
-                cls.vid_matrix[vid_indx] = torch.zeros(4, dtype=torch.int32, device="cpu")
-            cls.vid_matrix[vid_indx] += feature[:-1]
-
-    @classmethod
-    def get_vid_ratio(cls, vid: str | int):
-        '''output: torch.tensor(batch, channel, 1, (precision, recall ,fnr, f_score, accuracy))'''
-        if type(vid) == str:
-            vid = cls.vid2id.get(vid)
-            if vid is None:
-                print(f"Error | vid: {vid}")
-                exit()
-        tp, fp, tn, fn = cls.vid_matrix[vid]
-        prec = tp / (tp + fp) if (tp + fp) != 0 else float("nan")
-        recall = tp / (tp + fn) if (tp + fn) != 0 else float("nan")
-        fnr = 1 - recall
-
-        f_score = torch.tensor(1) if (tp + fn) == 0 else torch.tensor(0) if tp == 0 else 2 * (prec * recall) / (prec + recall)
-        acc = (tp + tn) / (tp + fp + tn + fn) if (tp + fp + tn + fn) != 0 else float('nan')
-
-        return torch.tensor((prec, recall, fnr, f_score, acc), dtype=torch.float32)
-
-    @classmethod
-    def get_cat_ratio(cls, cat: str | int):
-        if type(cat) == str:
-            cat = cls.cat2id.get(cat)
-            if cat is None:
-                print(f"Error | cat: {cat}")
-                exit()
-
-        results = torch.zeros(5, dtype=torch.float32)
-
-        for i, vid in enumerate(cls.id2vid.keys(), 1):
-            if vid // 10 == cat:
-                ratios = cls.get_vid_ratio(vid)
-                result = (result * (i - 1) + ratios) / i
-        return results
+ACC_NAMES = ['Prec', 'Recall', 'FNR', 'F_score', 'ACC']
+LOSS_NAMES = ['Loss']
+ORDER_NAMES = [*ACC_NAMES, *LOSS_NAMES]
 
 
 class EvalMeasure(nn.Module):
@@ -90,6 +50,130 @@ class EvalMeasure(nn.Module):
 
         result = torch.cat((tp, fp, tn, fn, vid_indices), dim=1).cpu()
         return result
+
+
+class OneEpochVideosAccumulation:
+    id2vid = ID2VID
+    vid2id = VID2ID
+
+    id2cat = ID2CAT
+    cat2id = CAT2ID
+
+    def __init__(self) -> None:
+        self.vid_matrix: dict[int : torch.Tensor] = dict()
+
+    def accumulate(self, result: torch.Tensor) -> None:
+        for feature in result:
+            vid_indx = feature[-1].item()
+            if self.vid_matrix.get(vid_indx, None) is None:
+                self.vid_matrix[vid_indx] = torch.zeros(4, dtype=torch.int32, device="cpu")
+            self.vid_matrix[vid_indx] += feature[:-1]
+
+    def get_vid_ratio(self, vid: str | int):
+        '''output: torch.tensor(batch, channel, 1, (precision, recall ,fnr, f_score, accuracy))'''
+        if type(vid) == str:
+            vid = self.vid2id.get(vid)
+            if vid is None:
+                print(f"Error | vid: {vid}")
+                exit()
+
+        return calculate_acc_metrics(*self.vid_matrix[vid])
+
+    def get_cat_ratio(self, cat: str | int):
+        if type(cat) == str:
+            cat = self.cat2id.get(cat)
+            if cat is None:
+                print(f"Error | cat: {cat}")
+                exit()
+
+        results = torch.zeros(5, dtype=torch.float32)
+
+        for i, vid in enumerate(self.id2vid.keys(), 1):
+            if vid // 10 == cat:
+                ratios = self.get_vid_ratio(vid)
+                result = (result * (i - 1) + ratios) / i
+        return results
+
+
+class BasicRecord:
+    row_id = 0
+
+    def __init__(self, task_name: str, num_epoch: int = 0) -> None:
+        self.task_name = task_name
+        self.score_records = torch.tensor((num_epoch, len(ORDER_NAMES)), dtype=torch.float32)
+
+    @classmethod
+    def next_row(cls):
+        cls.row_id += 1
+
+    @classmethod
+    def update_row_id(cls, new_id: int):
+        cls.row_id = new_id
+
+    @staticmethod
+    def convert2df(records: torch.Tensor, start_row: int = 0, end_row: int = None):
+        record_dict = {name: records[start_row:end_row, i].tolist() for i, name in enumerate(ORDER_NAMES)}
+        return pd.DataFrame(record_dict)
+
+    def concatScoreRecords(self, score_records2: torch.Tensor, *args):
+        self.score_records = torch.vstack([self.score_records, score_records2, *args])
+        self.update_row_id(self.score_records.shape[0])
+
+        return self.score_records
+
+    def save(self, saveDir: str, start_row: int = 0, end_row: int = None):
+        self.convert2df(self.score_records, start_row, end_row).to_csv(f'{saveDir}/{self.task_name}.csv')
+
+    def record(self, *args: torch.Tensor):
+        self.score_records[self.row_id, :] = args
+
+    def get_last_score(self):
+        return self.score_records[self.row_id]
+
+    def __repr__(self) -> str:
+        self.task_name
+
+
+# ! not test yet
+class SummaryRecord:
+    order_names = [*ACC_NAMES, *LOSS_NAMES]
+
+    def __init__(
+        self,
+        writer: SummaryWriter,
+        saveDir: str,
+        num_epoch: int,
+        mode: str = 'Train',
+        acc_func: Callable[[int | torch.IntTensor], torch.Tensor] = calculate_acc_metrics,
+        loss_func: Callable = jaccard_loss,
+    ) -> None:
+        self.writer = writer
+        self.saveDir = saveDir
+        self.num_epoch = num_epoch
+        self.mode = mode
+        self.acc_func = acc_func
+        self.loss_func = loss_func
+
+        self.cate_records: Dict[int, BasicRecord] = {}
+        self.video_records: Dict[int, BasicRecord] = {}
+
+    def records(self, videosAccumulation: OneEpochVideosAccumulation):
+        # todo: add writer in this method
+        for vid, k in videosAccumulation.vid_matrix.items():
+            self.video_records.setdefault(i, BasicRecord(ID2VID[vid], self.num_epoch)).record(
+                torch.cat(self.acc_func(*k), self.loss_func(*k))
+            )
+
+        cid_freq = {}
+        for vid, video_record in self.video_records.items():
+            cid = vid // 10
+            cid_freq[cid] = cid_freq.setdefault(cid, 0) + 1
+
+            self.cate_records.setdefault(cid, BasicRecord(ID2CAT[cid], self.num_epoch))
+            cate_record = self.cate_records[cid]
+            cate_record.record((cate_record.get_last_score() * (cid_freq[cid] - 1) + video_record.get_last_score()) / cid_freq[cid])
+
+        BasicRecord.next_row()
 
 
 if __name__ == "__main__":
@@ -133,5 +217,8 @@ if __name__ == "__main__":
     with torch.no_grad():
         result = eval(gts, preds, vid_indices)
     print(result)
-    VideosData.save_result(result)
-    print(VideosData.get_vid_ratio(11))
+
+    video_acc = OneEpochVideosAccumulation()
+    video_acc.accumulate(result)
+    print(video_acc.get_vid_ratio(11))
+    print(video_acc.vid_matrix)
