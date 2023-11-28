@@ -125,7 +125,7 @@ class BasicRecord:
         self.convert2df(self.score_records, start_row, end_row).to_csv(f'{saveDir}/{self.task_name}.csv')
 
     def record(self, *args: torch.Tensor):
-        self.score_records[self.row_id, :] = torch.tensor(args, dtype=torch.float32)  # ! not test yet
+        self.score_records[self.row_id, :] = torch.tensor(args, dtype=torch.float32)
 
     @property
     def last_scores(self):
@@ -135,7 +135,6 @@ class BasicRecord:
         return f'{self.task_name}(\n{self.score_records[:self.row_id]}\n)'
 
 
-# ! not test yet
 class SummaryRecord:
     order_names = [*ACC_NAMES, *LOSS_NAMES]
 
@@ -178,6 +177,10 @@ class SummaryRecord:
     def write2tensorboard(self, task_name: str, scores: torch.Tensor):
         for name, score in zip(self.order_names, scores):
             self.writer.add_scalar(f'{self.mode}/{task_name}/{name}', score, BasicRecord.row_id)
+
+    # ! need implement
+    def export2csv(self):
+        ...
 
     def __repr__(self) -> str:
         return f'{self.mode}-Records'
