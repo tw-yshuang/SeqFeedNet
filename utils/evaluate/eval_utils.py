@@ -1,9 +1,8 @@
-from typing import Dict, List, Callable
+from typing import Dict, Callable
 
 import pandas as pd
 import torch
 from torch import nn
-from torch.nn import functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 if __name__ == '__main__':
@@ -15,6 +14,7 @@ if __name__ == '__main__':
 from utils.DataID_MatchTable import VID2ID, CAT2ID, ID2VID, ID2CAT
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
 from utils.evaluate.losses import CDNet2014_JaccardLoss as Loss
+from submodules.UsefulFileTools.FileOperator import check2create_dir
 
 
 ACC_NAMES = ['Prec', 'Recall', 'FNR', 'F_score', 'ACC']
@@ -139,6 +139,8 @@ class SummaryRecord:
         self.cate_records: Dict[int, BasicRecord] = {}
         self.video_records: Dict[int, BasicRecord] = {}
 
+        self.task_record = BasicRecord('Overall', num_epoch)
+
     def records(self, videosAccumulation: OneEpochVideosAccumulation):
         vid: int
         k: torch.Tensor
@@ -156,13 +158,25 @@ class SummaryRecord:
             cate_record.record(*((cate_record.last_scores * (cid_freq[cid] - 1) + video_record.last_scores) / cid_freq[cid]))
             self.write2tensorboard(task_name=str(ID2CAT[cid]), scores=self.cate_records[cid].last_scores)
 
+        self.task_record.record(*torch.stack([cate_record.last_scores for cate_record in self.cate_records.values()]).mean(0))
+        self.write2tensorboard(task_name=self.mode, scores=self.task_record.last_scores)
+
     def write2tensorboard(self, task_name: str, scores: torch.Tensor):
         for name, score in zip(self.order_names, scores):
             self.writer.add_scalar(f'{self.mode}/{task_name}/{name}', score, BasicRecord.row_id)
 
-    # ! need implement
     def export2csv(self):
-        ...
+        main_saveDir = f'{self.saveDir}/{self.mode}'
+        check2create_dir(main_saveDir)
+        self.task_record.save(main_saveDir)
+
+        for cate_record in self.cate_records.values():
+            cate_record.save(main_saveDir)
+
+        for id, video_record in self.video_records.items():
+            sub_saveDir = f'{main_saveDir}/{ID2CAT[id // 10]}'
+            check2create_dir(sub_saveDir)
+            video_record.save(sub_saveDir)
 
     def __repr__(self) -> str:
         return f'{self.mode}-Records'
@@ -213,7 +227,6 @@ if __name__ == "__main__":
 
         video_acc = OneEpochVideosAccumulation()
         video_acc.accumulate(result)
-        print(video_acc.get_vid_ratio(11))
         print(video_acc.vid_matrix)
 
         return video_acc
@@ -248,3 +261,6 @@ if __name__ == "__main__":
     #  ==============
     train_summary.records(video_acc)
     test_summary.records(video_acc)
+
+    train_summary.export2csv()
+    test_summary.export2csv()
