@@ -13,8 +13,8 @@ if __name__ == '__main__':
     sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from utils.DataID_MatchTable import VID2ID, CAT2ID, ID2VID, ID2CAT
-from utils.evalutate.accuracy import calculate_acc_metrics
-from utils.evalutate.losses import jaccard_loss
+from utils.evalutate.accuracy import calculate_acc_metrics as acc_func
+from utils.evalutate.losses import test_loss as loss_func
 
 
 ACC_NAMES = ['Prec', 'Recall', 'FNR', 'F_score', 'ACC']
@@ -77,7 +77,7 @@ class OneEpochVideosAccumulation:
                 print(f"Error | vid: {vid}")
                 exit()
 
-        return calculate_acc_metrics(*self.vid_matrix[vid])
+        return acc_func(*self.vid_matrix[vid])
 
     def get_cat_ratio(self, cat: str | int):
         if type(cat) == str:
@@ -100,7 +100,7 @@ class BasicRecord:
 
     def __init__(self, task_name: str, num_epoch: int = 0) -> None:
         self.task_name = task_name
-        self.score_records = torch.tensor((num_epoch, len(ORDER_NAMES)), dtype=torch.float32)
+        self.score_records = torch.zeros((num_epoch, len(ORDER_NAMES)), dtype=torch.float32)
 
     @classmethod
     def next_row(cls):
@@ -125,13 +125,14 @@ class BasicRecord:
         self.convert2df(self.score_records, start_row, end_row).to_csv(f'{saveDir}/{self.task_name}.csv')
 
     def record(self, *args: torch.Tensor):
-        self.score_records[self.row_id, :] = args
+        self.score_records[self.row_id, :] = torch.tensor(args, dtype=torch.float32)  # ! not test yet
 
-    def get_last_score(self):
+    @property
+    def last_scores(self):
         return self.score_records[self.row_id]
 
     def __repr__(self) -> str:
-        self.task_name
+        return f'{self.task_name}(\n{self.score_records[:self.row_id]}\n)'
 
 
 # ! not test yet
@@ -144,8 +145,8 @@ class SummaryRecord:
         saveDir: str,
         num_epoch: int,
         mode: str = 'Train',
-        acc_func: Callable[[int | torch.IntTensor], torch.Tensor] = calculate_acc_metrics,
-        loss_func: Callable = jaccard_loss,
+        acc_func: Callable[[int | torch.IntTensor], torch.Tensor] = acc_func,
+        loss_func: Callable = loss_func,
     ) -> None:
         self.writer = writer
         self.saveDir = saveDir
@@ -158,11 +159,11 @@ class SummaryRecord:
         self.video_records: Dict[int, BasicRecord] = {}
 
     def records(self, videosAccumulation: OneEpochVideosAccumulation):
-        # todo: add writer in this method
+        vid: int
+        k: torch.Tensor
         for vid, k in videosAccumulation.vid_matrix.items():
-            self.video_records.setdefault(i, BasicRecord(ID2VID[vid], self.num_epoch)).record(
-                torch.cat(self.acc_func(*k), self.loss_func(*k))
-            )
+            self.video_records.setdefault(vid, BasicRecord(ID2VID[vid], self.num_epoch)).record(*self.acc_func(*k), self.loss_func(*k))
+            self.write2tensorboard(task_name=f'{ID2CAT[vid // 10]}/{ID2VID[vid]}', scores=self.video_records[vid].last_scores)
 
         cid_freq = {}
         for vid, video_record in self.video_records.items():
@@ -171,9 +172,15 @@ class SummaryRecord:
 
             self.cate_records.setdefault(cid, BasicRecord(ID2CAT[cid], self.num_epoch))
             cate_record = self.cate_records[cid]
-            cate_record.record((cate_record.get_last_score() * (cid_freq[cid] - 1) + video_record.get_last_score()) / cid_freq[cid])
+            cate_record.record(*((cate_record.last_scores * (cid_freq[cid] - 1) + video_record.last_scores) / cid_freq[cid]))
+            self.write2tensorboard(task_name=str(ID2CAT[cid]), scores=self.cate_records[cid].last_scores)
 
-        BasicRecord.next_row()
+    def write2tensorboard(self, task_name: str, scores: torch.Tensor):
+        for name, score in zip(self.order_names, scores):
+            self.writer.add_scalar(f'{self.mode}/{task_name}/{name}', score, BasicRecord.row_id)
+
+    def __repr__(self) -> str:
+        return f'{self.mode}-Records'
 
 
 if __name__ == "__main__":
@@ -222,3 +229,21 @@ if __name__ == "__main__":
     video_acc.accumulate(result)
     print(video_acc.get_vid_ratio(11))
     print(video_acc.vid_matrix)
+
+    writer = SummaryWriter('./out/test/112')
+    train_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=6)
+    test_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=6, mode='Test')
+
+    for i in range(5):
+        if len(test_summary.cate_records) != 0:
+            BasicRecord.next_row()
+        for video_acc, summary in zip([OneEpochVideosAccumulation(), OneEpochVideosAccumulation()], [train_summary, test_summary]):
+            result = torch.randint(0, 1000, size=(5, 5), dtype=torch.int32)
+            result[:, -1] = torch.arange(12, 60, 10)
+            video_acc.accumulate(result)
+            summary.records(video_acc)
+
+    print(train_summary.cate_records)
+    print(train_summary.video_records)
+    print(test_summary.cate_records)
+    print(test_summary.video_records)

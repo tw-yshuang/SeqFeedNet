@@ -7,6 +7,9 @@ from torch.nn import functional as F
 
 
 # todo: jaccard_loss use tp, fp, fn to build it
+# try focal loss??
+def test_loss(*args):
+    return torch.tensor(0.0, dtype=torch.float32)
 
 
 # code from https://github.com/ozantezcan/BSUV-Net-2.0/blob/69dac8b9a982a136bd1a59f4fb039983e6430c13/utils/losses.py#L31
