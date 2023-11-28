@@ -14,7 +14,7 @@ if __name__ == '__main__':
 
 from utils.DataID_MatchTable import VID2ID, CAT2ID, ID2VID, ID2CAT
 from utils.evalutate.accuracy import calculate_acc_metrics as acc_func
-from utils.evalutate.losses import test_loss as loss_func
+from utils.evalutate.losses import CDNet2014_JaccardLoss as Loss
 
 
 ACC_NAMES = ['Prec', 'Recall', 'FNR', 'F_score', 'ACC']
@@ -23,9 +23,10 @@ ORDER_NAMES = [*ACC_NAMES, *LOSS_NAMES]
 
 
 class EvalMeasure(nn.Module):
-    def __init__(self, thresh: float):
+    def __init__(self, thresh: float, loss_func: Loss | nn.Module = Loss(reduction='none')):
         super().__init__()
         self.thresh = thresh
+        self.loss_func = loss_func
 
     def forward(self, gts: torch.Tensor, preds: torch.Tensor, vid_indices: torch.Tensor) -> torch.Tensor:
         '''
@@ -33,8 +34,11 @@ class EvalMeasure(nn.Module):
         vid_indices: 2-dimension -> batch * 1. (batch, vid_indx)
         result : 2-dimension -> batch * 5;  (batch, features) ; features-> (tp, fp, tn, fn, vid_indx)
         '''
-        gts = gts.to(dtype=torch.int32)
-        preds = torch.where(preds > self.thresh, 1, 0).to(dtype=torch.int32)
+
+        losses = self.loss_func(preds, gts)
+
+        gts = gts.type(torch.int32)
+        preds = torch.where(preds > self.thresh, 1, 0).type(dtype=torch.int32)
 
         diff = gts ^ preds
         same = diff ^ torch.ones_like(diff)
@@ -48,8 +52,7 @@ class EvalMeasure(nn.Module):
         tp, fp = tp.view(batch, -1).sum(dim=1, keepdim=True), fp.view(batch, -1).sum(dim=1, keepdim=True)
         tn, fn = tn.view(batch, -1).sum(dim=1, keepdim=True), fn.view(batch, -1).sum(dim=1, keepdim=True)
 
-        result = torch.cat((tp, fp, tn, fn, vid_indices), dim=1).cpu()
-        return result
+        return torch.cat((tp, fp, tn, fn, losses, vid_indices), dim=1)
 
 
 class OneEpochVideosAccumulation:
@@ -63,11 +66,16 @@ class OneEpochVideosAccumulation:
         self.vid_matrix: dict[int : torch.Tensor] = dict()
 
     def accumulate(self, result: torch.Tensor) -> None:
+        result = result.to('cpu')
         for feature in result:
-            vid_indx = feature[-1].item()
+            vid_indx = int(feature[-1])
             if self.vid_matrix.get(vid_indx, None) is None:
-                self.vid_matrix[vid_indx] = torch.zeros(4, dtype=torch.int32, device="cpu")
-            self.vid_matrix[vid_indx] += feature[:-1]
+                self.vid_matrix[vid_indx] = torch.zeros(6, dtype=torch.float64, device='cpu')
+
+            vid_matrix = self.vid_matrix[vid_indx]
+            vid_matrix[:-2] += feature[:-2]
+            vid_matrix[-2] = (vid_matrix[-2] * vid_matrix[-1] + feature[-2]) / (vid_matrix[-1] + 1)
+            vid_matrix[-1] += 1
 
     def get_vid_ratio(self, vid: str | int):
         '''output: torch.tensor(batch, channel, 1, (precision, recall ,fnr, f_score, accuracy))'''
@@ -77,7 +85,7 @@ class OneEpochVideosAccumulation:
                 print(f"Error | vid: {vid}")
                 exit()
 
-        return acc_func(*self.vid_matrix[vid])
+        return acc_func(*self.vid_matrix[vid][:-2])
 
     def get_cat_ratio(self, cat: str | int):
         if type(cat) == str:
@@ -145,14 +153,12 @@ class SummaryRecord:
         num_epoch: int,
         mode: str = 'Train',
         acc_func: Callable[[int | torch.IntTensor], torch.Tensor] = acc_func,
-        loss_func: Callable = loss_func,
     ) -> None:
         self.writer = writer
         self.saveDir = saveDir
         self.num_epoch = num_epoch
         self.mode = mode
         self.acc_func = acc_func
-        self.loss_func = loss_func
 
         self.cate_records: Dict[int, BasicRecord] = {}
         self.video_records: Dict[int, BasicRecord] = {}
@@ -161,7 +167,7 @@ class SummaryRecord:
         vid: int
         k: torch.Tensor
         for vid, k in videosAccumulation.vid_matrix.items():
-            self.video_records.setdefault(vid, BasicRecord(ID2VID[vid], self.num_epoch)).record(*self.acc_func(*k), self.loss_func(*k))
+            self.video_records.setdefault(vid, BasicRecord(ID2VID[vid], self.num_epoch)).record(*self.acc_func(*k[:-2]), k[-2])
             self.write2tensorboard(task_name=f'{ID2CAT[vid // 10]}/{ID2VID[vid]}', scores=self.video_records[vid].last_scores)
 
         cid_freq = {}
@@ -197,56 +203,72 @@ if __name__ == "__main__":
     sys.path.append(str(Path(__file__).resolve().parent.parent))
     from utils.data_preprocess import CDNet2014Preprocess
 
-    preprocess = CDNet2014Preprocess((224, 224))
-    eval = EvalMeasure(0.5)
-    gts_pth = "/root/Work/fork-BGS/BSUV-Net-2.0/dataset/currentFr/baseline/highway/groundtruth"
-    imgs_name = sorted(os.listdir(gts_pth))
+    def test():
+        preprocess = CDNet2014Preprocess((224, 224))
+        eval = EvalMeasure(0.5, Loss(reduction='none'))
+        gts_pth = "/root/Work/fork-BGS/BSUV-Net-2.0/dataset/currentFr/baseline/highway/groundtruth"
+        imgs_name = sorted(os.listdir(gts_pth))
 
-    gts = list()
-    vid_indices = list()
-    for i, img_name in enumerate(imgs_name[699:]):
-        if img_name.split('.')[-1] != 'png':
-            continue
-        elif i == 5:
-            break
+        gts = list()
+        vid_indices = list()
+        for i, img_name in enumerate(imgs_name[699:]):
+            if img_name.split('.')[-1] != 'png':
+                continue
+            elif i == 5:
+                break
 
-        img = cv.imread(os.path.join(gts_pth, img_name), cv.IMREAD_GRAYSCALE)
-        gt = preprocess(img)
-        gts.append(tvtf.ToTensor()(gt.copy()))
-        vid_indices.append(11)
-        # gt[gt == 1] = 255
-        # gt[gt == -1] = 128
-        # gt[gt == 0] = 0
-        # cv.imwrite(f'./{i+1+699}.png', gt)
+            img = cv.imread(os.path.join(gts_pth, img_name), cv.IMREAD_GRAYSCALE)
+            gt = preprocess(img)
+            gts.append(tvtf.ToTensor()(gt.copy()))
+            vid_indices.append(11)
+            # gt[gt == 1] = 255
+            # gt[gt == -1] = 128
+            # gt[gt == 0] = 0
+            # cv.imwrite(f'./{i+1+699}.png', gt)
 
-    device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
-    gts = torch.cat(gts, dim=0).reshape(len(gts), 1, 224, 224).to(device=device)
-    preds = torch.zeros_like(gts, device=device)
-    vid_indices = torch.tensor(vid_indices).reshape(5, 1).to(device=device, dtype=torch.int32)
+        device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
+        gts = torch.cat(gts, dim=0).reshape(len(gts), 1, 224, 224).to(device=device)
+        preds = torch.zeros_like(gts, device=device)
+        vid_indices = torch.tensor(vid_indices).reshape(5, 1).to(device=device, dtype=torch.int32)
 
-    with torch.no_grad():
-        result = eval(gts, preds, vid_indices)
-    print(result)
+        with torch.no_grad():
+            result = eval(gts, preds, vid_indices)
+        print(result)
 
-    video_acc = OneEpochVideosAccumulation()
-    video_acc.accumulate(result)
-    print(video_acc.get_vid_ratio(11))
-    print(video_acc.vid_matrix)
+        video_acc = OneEpochVideosAccumulation()
+        video_acc.accumulate(result)
+        print(video_acc.get_vid_ratio(11))
+        print(video_acc.vid_matrix)
 
-    writer = SummaryWriter('./out/test/112')
-    train_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=6)
-    test_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=6, mode='Test')
+        return video_acc
 
-    for i in range(5):
+    video_acc = test()
+
+    # ! Training example
+    writer = SummaryWriter('./out/test/114')
+    train_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=50)
+    test_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=50, mode='Test')
+
+    train_summary.records(video_acc)
+    test_summary.records(video_acc)
+
+    for epoch in range(49):
         if len(test_summary.cate_records) != 0:
             BasicRecord.next_row()
-        for video_acc, summary in zip([OneEpochVideosAccumulation(), OneEpochVideosAccumulation()], [train_summary, test_summary]):
-            result = torch.randint(0, 1000, size=(5, 5), dtype=torch.int32)
+        train_video_acc = OneEpochVideosAccumulation()
+        test_video_acc = OneEpochVideosAccumulation()
+        for video_acc in [train_video_acc, test_video_acc]:
+            result = torch.randint(0, 1000, size=(5, 6), dtype=torch.float32)
             result[:, -1] = torch.arange(12, 60, 10)
             video_acc.accumulate(result)
-            summary.records(video_acc)
+        train_summary.records(train_video_acc)
+        test_summary.records(test_video_acc)
 
     print(train_summary.cate_records)
     print(train_summary.video_records)
     print(test_summary.cate_records)
     print(test_summary.video_records)
+
+    #  ==============
+    train_summary.records(video_acc)
+    test_summary.records(video_acc)
