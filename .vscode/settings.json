@@ -33,7 +33,14 @@
         }
     },
     "cSpell.words": [
+        "BSUV",
+        "dsize",
+        "groundtruth",
+        "Jaccard",
+        "keepdim",
         "nparray",
-        "dsize"
+        "Prec",
+        "tensorboard",
+        "tvtf"
     ]
 }

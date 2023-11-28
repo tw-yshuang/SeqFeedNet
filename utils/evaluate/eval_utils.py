@@ -13,8 +13,8 @@ if __name__ == '__main__':
     sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from utils.DataID_MatchTable import VID2ID, CAT2ID, ID2VID, ID2CAT
-from utils.evalutate.accuracy import calculate_acc_metrics as acc_func
-from utils.evalutate.losses import CDNet2014_JaccardLoss as Loss
+from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
+from utils.evaluate.losses import CDNet2014_JaccardLoss as Loss
 
 
 ACC_NAMES = ['Prec', 'Recall', 'FNR', 'F_score', 'ACC']
@@ -31,8 +31,8 @@ class EvalMeasure(nn.Module):
     def forward(self, gts: torch.Tensor, preds: torch.Tensor, vid_indices: torch.Tensor) -> torch.Tensor:
         '''
         gts, preds : 4-dimension -> batch * channel * im_height * im_width. (batch, channel, height, width)
-        vid_indices: 2-dimension -> batch * 1. (batch, vid_indx)
-        result : 2-dimension -> batch * 5;  (batch, features) ; features-> (tp, fp, tn, fn, vid_indx)
+        vid_indices: 2-dimension -> batch * 1. (batch, vid_idx)
+        result : 2-dimension -> batch * 5;  (batch, features) ; features-> (tp, fp, tn, fn, vid_idx)
         '''
 
         losses = self.loss_func(preds, gts)
@@ -68,39 +68,15 @@ class OneEpochVideosAccumulation:
     def accumulate(self, result: torch.Tensor) -> None:
         result = result.to('cpu')
         for feature in result:
-            vid_indx = int(feature[-1])
-            if self.vid_matrix.get(vid_indx, None) is None:
-                self.vid_matrix[vid_indx] = torch.zeros(6, dtype=torch.float64, device='cpu')
+            vid_idx = int(feature[-1])
+            if self.vid_matrix.get(vid_idx, None) is None:
+                # {id: [tp, fp, tn, fn, losses, accumulative_times]}
+                self.vid_matrix[vid_idx] = torch.zeros(6, dtype=torch.float64, device='cpu')
 
-            vid_matrix = self.vid_matrix[vid_indx]
+            vid_matrix = self.vid_matrix[vid_idx]
             vid_matrix[:-2] += feature[:-2]
             vid_matrix[-2] = (vid_matrix[-2] * vid_matrix[-1] + feature[-2]) / (vid_matrix[-1] + 1)
             vid_matrix[-1] += 1
-
-    def get_vid_ratio(self, vid: str | int):
-        '''output: torch.tensor(batch, channel, 1, (precision, recall ,fnr, f_score, accuracy))'''
-        if type(vid) == str:
-            vid = self.vid2id.get(vid)
-            if vid is None:
-                print(f"Error | vid: {vid}")
-                exit()
-
-        return acc_func(*self.vid_matrix[vid][:-2])
-
-    def get_cat_ratio(self, cat: str | int):
-        if type(cat) == str:
-            cat = self.cat2id.get(cat)
-            if cat is None:
-                print(f"Error | cat: {cat}")
-                exit()
-
-        results = torch.zeros(5, dtype=torch.float32)
-
-        for i, vid in enumerate(self.id2vid.keys(), 1):
-            if vid // 10 == cat:
-                ratios = self.get_vid_ratio(vid)
-                result = (result * (i - 1) + ratios) / i
-        return results
 
 
 class BasicRecord:
