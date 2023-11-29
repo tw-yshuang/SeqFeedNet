@@ -56,6 +56,8 @@ class EvalMeasure(nn.Module):
 
 
 class OneEpochVideosAccumulation:
+    '''The `OneEpochVideosAccumulation` class accumulates and updates statistics for video features during one epoch of training.'''
+
     id2vid = ID2VID
     vid2id = VID2ID
 
@@ -120,8 +122,6 @@ class BasicRecord:
 
 
 class SummaryRecord:
-    order_names = [*ACC_NAMES, *LOSS_NAMES]
-
     def __init__(
         self,
         writer: SummaryWriter,
@@ -139,7 +139,8 @@ class SummaryRecord:
         self.cate_records: Dict[int, BasicRecord] = {}
         self.video_records: Dict[int, BasicRecord] = {}
 
-        self.task_record = BasicRecord('Overall', num_epoch)
+        self.overall_record = BasicRecord('Overall', num_epoch)  # internal manipulate, auto calculate
+        self.pixelLevel_record = BasicRecord('PixelLevel', num_epoch)  # external manipulate
 
     def records(self, videosAccumulation: OneEpochVideosAccumulation):
         vid: int
@@ -158,17 +159,18 @@ class SummaryRecord:
             cate_record.record(*((cate_record.last_scores * (cid_freq[cid] - 1) + video_record.last_scores) / cid_freq[cid]))
             self.write2tensorboard(task_name=str(ID2CAT[cid]), scores=self.cate_records[cid].last_scores)
 
-        self.task_record.record(*torch.stack([cate_record.last_scores for cate_record in self.cate_records.values()]).mean(0))
-        self.write2tensorboard(task_name=self.mode, scores=self.task_record.last_scores)
+        self.overall_record.record(*torch.stack([cate_record.last_scores for cate_record in self.cate_records.values()]).mean(0))
+        self.write2tensorboard(task_name=self.mode, scores=self.overall_record.last_scores)
 
     def write2tensorboard(self, task_name: str, scores: torch.Tensor):
-        for name, score in zip(self.order_names, scores):
+        for name, score in zip(ORDER_NAMES, scores):
             self.writer.add_scalar(f'{self.mode}/{task_name}/{name}', score, BasicRecord.row_id)
 
     def export2csv(self):
         main_saveDir = f'{self.saveDir}/{self.mode}'
         check2create_dir(main_saveDir)
-        self.task_record.save(main_saveDir)
+        self.overall_record.save(main_saveDir)
+        self.pixelLevel_record.save(main_saveDir)
 
         for cate_record in self.cate_records.values():
             cate_record.save(main_saveDir)
@@ -234,9 +236,10 @@ if __name__ == "__main__":
     video_acc = test()
 
     # ! Training example
-    writer = SummaryWriter('./out/test/114')
-    train_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=50)
-    test_summary = SummaryRecord(writer, saveDir='./out/test', num_epoch=50, mode='Test')
+    trainwriter = SummaryWriter('./out/test/115')
+    testwriter = SummaryWriter('./out/test/115')
+    train_summary = SummaryRecord(trainwriter, saveDir='./out/test', num_epoch=50)
+    test_summary = SummaryRecord(testwriter, saveDir='./out/test', num_epoch=50, mode='Test')
 
     train_summary.records(video_acc)
     test_summary.records(video_acc)

@@ -14,26 +14,12 @@ if __name__ == '__main__':
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from submodules.UsefulFileTools.FileOperator import get_filenames
+from config import DatasetConfig
 from cross_validation_config import datasets_tr, datasets_test
-from utils.DataID_MatchTable import ID2VID, ID2CAT, VID2ID, CAT2ID
+from utils.DataID_MatchTable import VID2ID, CAT2ID
 from utils.data_preprocess import CDNet2014Preprocess
 from utils.transforms import CustomCompose
-
-
-currentFrDir = 'Data/currentFr'
-emptyBgDir = 'Data/emptyBg'
-recentBgDir = 'Data/recentBg'
-
-
-class DatasetConfig:
-    next_stage = 5
-    frame_groups = 5
-    gap_range = [2, 200]
-    sample4oneVideo = 200
-
-    def __init__(self, isModel3D=True) -> None:
-        self.concat_axis = -1 if isModel3D else 0  # axis dependent by model input_channel
+from submodules.UsefulFileTools.FileOperator import get_filenames
 
 
 class CDNet2014OneVideo:
@@ -63,7 +49,7 @@ class CDNet2014OneVideo:
         self.inputPaths_inROI = Tuple[str]
         self.recentBgPaths_inROI = Tuple[str]
 
-        with open(file=f'{currentFrDir}/{cate_name}/{self.name}/temporalROI.txt', mode='r') as f:
+        with open(file=f'{DatasetConfig.currentFrDir}/{cate_name}/{self.name}/temporalROI.txt', mode='r') as f:
             self.temporalROI = tuple(map(int, f.read().split(' ')))
 
         self.__load_paths(cate_name)
@@ -73,7 +59,7 @@ class CDNet2014OneVideo:
         for sub_dir, extension, dir_path, var_name in zip(
             ['groundtruth/', 'input/', '', ''],
             ['png', *['jpg'] * 3],
-            [currentFrDir, currentFrDir, emptyBgDir, recentBgDir],
+            [DatasetConfig.currentFrDir, DatasetConfig.currentFrDir, DatasetConfig.emptyBgDir, DatasetConfig.recentBgDir],
             ['gtPaths_all', 'inputPaths_all', 'emptyBgPaths', 'recentBgPaths_all'],
         ):
             paths = get_filenames(dir_path=f'{dir_path}/{cate_name}/{self.name}/{sub_dir}', specific_name=f'*.{extension}')
@@ -245,7 +231,7 @@ class CDNet2014Dataset(Dataset):
         return len(self.data_infos)
 
 
-def get_dataloader(
+def get_dataLoaders_and_testSet(
     dataset_cfg: DatasetConfig = DatasetConfig(),
     cv_set: int = 1,
     dataset_rate=1.0,
@@ -253,28 +239,39 @@ def get_dataloader(
     num_workers: int = 8,
     pin_memory: bool = False,
     train_transforms_cpu: CustomCompose = None,
+    test_transforms_cpu: transforms.Compose = None,
     label_isShadowFG: bool = False,
     **kwargs,
 ):
     dataset = CDNet2014Dataset(datasets_tr, cv_set, dataset_cfg, train_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=True)
     train_len = int(len(dataset) * dataset_rate)
     train_set, val_set = random_split(dataset, [train_len, len(dataset) - train_len])
+    val_set.transforms_cpu = test_transforms_cpu
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
     if dataset_rate != 1.0:
         val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
     else:
         val_loader = None
 
-    return train_loader, val_loader
+    test_set = CDNet2014Dataset(datasets_tr, cv_set, None, test_transforms_cpu, isShadowFG=False, isTrain=False)
+
+    return train_loader, val_loader, test_set
 
 
 if __name__ == '__main__':
+    from tqdm import tqdm
     from utils.transforms import RandomCrop, RandomResizedCrop
 
+    sizeHW = (224, 224)
     trans = CustomCompose(
         [
             # transforms.ToTensor(), # already converted in the __getitem__()
-            transforms.RandomCrop(size=(224, 224)),
+            transforms.RandomChoice(
+                [
+                    transforms.RandomCrop(size=sizeHW),
+                    RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
+                ]
+            ),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
@@ -330,35 +327,42 @@ if __name__ == '__main__':
     # =============================
 
     cfg = DatasetConfig()
-    trans = CustomCompose(
+    train_trans_cpu = CustomCompose(
         [
             # transforms.ToTensor(), # already converted in the __getitem__()
-            transforms.RandomCrop(size=(224, 224)),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-    test_trans = transforms.Compose(
-        [
-            transforms.Resize(size=(244, 244)),
+            transforms.RandomChoice(
+                [
+                    transforms.RandomCrop(size=sizeHW),
+                    RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
+                ]
+            ),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 
-    train_loader, val_loader = get_dataloader(
+    test_trans_cpu = transforms.Compose(
+        [
+            # transforms.ToTensor(), # already converted in the __getitem__()
+            transforms.Resize(sizeHW, antialias=True),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ]
+    )
+    train_loader, val_loader, test_set = get_dataLoaders_and_testSet(
         dataset_cfg=cfg,
         cv_set=5,
         dataset_rate=1,
         batch_size=8,
         num_workers=16,
         pin_memory=True,
-        train_transforms_cpu=trans,
-        test_transforms_cpu=test_trans,
+        train_transforms_cpu=train_trans_cpu,
+        test_transforms_cpu=test_trans_cpu,
         label_isShadowFG=False,
     )
 
-    for i, (video_info, features, frames, labels) in enumerate(train_loader):
-        print(f"train: {i}")
+    i = 0
+    for video_info, features, frames, labels in tqdm(train_loader):
         if i == 0:
+            i += 1
             print(video_info)
             print(features)
             print(frames)
