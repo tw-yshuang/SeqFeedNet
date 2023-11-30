@@ -174,7 +174,7 @@ class CDNet2014Dataset(Dataset):
             # ! test_dataset can use this, but test_loader can not use.
             # ! TypeError: default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found <class 'generator'>
             # * video_info, features, genFunc4FrameAndLabel(); genFunc4FrameAndLabel() -> frame, label
-            return (cate.id, video.id), features, self.__getitem4testIter(video)
+            return video.id, self.transforms_cpu(features), self.__getitem4testIter(video)
 
         frame_ids = self.__get_frameIDs(video, frame_id)
         frame_ls = []
@@ -187,7 +187,7 @@ class CDNet2014Dataset(Dataset):
         labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
 
         # * video_info, features, frames, labels
-        return (cate.id, video.id), *self.transforms_cpu(features, frames, labels)
+        return video.id, *self.transforms_cpu(frames, labels, features)
 
     def __getitem4testIter(self, video: CDNet2014OneVideo):
         for input_path, gt_path in zip(video.inputPaths_inROI, video.gtPaths_inROI):
@@ -268,7 +268,7 @@ if __name__ == '__main__':
             # transforms.ToTensor(), # already converted in the __getitem__()
             transforms.RandomChoice(
                 [
-                    transforms.RandomCrop(size=sizeHW),
+                    RandomCrop(crop_size=sizeHW, p=1.0),
                     RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
                 ]
             ),
@@ -332,7 +332,7 @@ if __name__ == '__main__':
             # transforms.ToTensor(), # already converted in the __getitem__()
             transforms.RandomChoice(
                 [
-                    transforms.RandomCrop(size=sizeHW),
+                    RandomCrop(crop_size=sizeHW, p=1.0),
                     RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
                 ]
             ),

@@ -1,5 +1,5 @@
 import random
-from typing import List, Union, Callable
+from typing import Dict, List, Union, Callable
 
 import torch
 from torchvision import transforms
@@ -33,24 +33,30 @@ class CustomCompose:
     def __init__(self, transforms: List[Callable]) -> None:
         self.transforms = transforms
 
-    def __call__(self, features: torch.Tensor, frames: torch.Tensor, labels: torch.Tensor | None = None):
+    def __call__(self, frames: torch.Tensor, labels: torch.Tensor | None = None, features: torch.Tensor | None = None):
         for t in self.transforms:
             if t.__module__ != transforms.transforms.__name__:
-                features, frames, labels = t(features, frames, labels)
+                frames, labels, features = t(frames, labels, features)
             else:
                 if t.__class__.__name__ == transforms.RandomChoice.__name__:
                     t = t()
                     if t.__module__ != transforms.transforms.__name__:
-                        features, frames, labels = t(features, frames, labels)
+                        frames, labels, features = t(frames, labels, features)
                         continue
 
-                features = t(features)
-                frames = t(frames)
-
-                if t.__class__.__name__ != transforms.Normalize.__name__:
+                if features is not None:
+                    features = t(features)
+                if any(keyword in t.__class__.__name__ for keyword in ['Crop', 'Resize', 'Flip']):
+                    if 'Random' in t.__class__.__name__:
+                        raise RuntimeError(
+                            "Do not use space-related random-augmentation methods from transforms.transforms, need to keep space domain related for three outputs"
+                        )
+                    # * labels do not use the augmentation method from transforms.transforms, labels is binary-like info so it do not use color-related augmentation
                     labels = t(labels)
 
-        return features, frames, labels
+                frames = t(frames)
+
+        return frames, labels, features
 
     def __repr__(self) -> str:
         format_string = self.__class__.__name__ + "("
@@ -62,28 +68,55 @@ class CustomCompose:
 
 
 class IterativeCustomCompose:
-    def __init__(self, transforms: List[Callable], transform_img_size=(224, 224), device: str = 'cuda') -> None:
+    def __init__(self, transforms: List[Callable], target_size=(224, 224), device: str = 'cuda') -> None:
         '''
-        transform_img_size: (H, W)
+        target_size: (H, W)
         '''
         self.compose = CustomCompose(transforms)
-        self.transform_img_size = transform_img_size
+        self.target_size = target_size
         self.device = device
 
-    def __call__(self, batch_features: torch.Tensor, batch_frames: torch.Tensor, batch_labels: torch.Tensor | None = None):
-        process_batch_features = torch.zeros((*batch_features.shape[0:3], *self.transform_img_size), dtype=torch.float32).to(
-            self.device
-        )
-        process_batch_frames = torch.zeros((*batch_frames.shape[0:3], *self.transform_img_size), dtype=torch.float32).to(self.device)
-        process_batch_labels = torch.zeros((*batch_labels.shape[0:3], *self.transform_img_size), dtype=torch.float32).to(self.device)
+        self.parameter_order = ['frames', 'labels', 'features']
 
-        features: torch.Tensor
-        frames: torch.Tensor
-        labels: torch.Tensor
-        for i, (features, frames, labels) in enumerate(zip(batch_features, batch_frames, batch_labels)):
-            process_batch_features[i], process_batch_frames[i], process_batch_labels[i] = self.compose(features, frames, labels)
+    def __call__(
+        self,
+        b_frames: torch.Tensor,
+        b_labels: torch.Tensor | None = None,
+        b_features: torch.Tensor | None = None,
+        useBuffer: bool = False,
+    ):
+        # if useBuffer:
+        #     process_batch_frames = torch.zeros((*b_frames.shape[0:3], *self.target_size), dtype=torch.float32).to(self.device)
+        #     process_batch_labels = torch.zeros((*b_labels.shape[0:3], *self.target_size), dtype=torch.float32).to(self.device)
+        #     process_batch_features = torch.zeros((*b_features.shape[0:3], *self.target_size), dtype=torch.float32).to(self.device)
+        # else:
+        #     process_batch_frames = b_frames
+        #     process_batch_labels = b_labels
+        #     process_batch_features = b_features
 
-        return process_batch_features, process_batch_frames, process_batch_labels
+        b_dict: Dict[str, torch.Tensor] = {}
+        for b_items, name in zip([b_frames, b_labels, b_features], self.parameter_order):
+            if b_items is not None:
+                b_dict[name] = b_items
+
+        if useBuffer:
+            process_b_dict = {
+                k: torch.zeros((*v.shape[0:3], *self.target_size), dtype=torch.float32).to(self.device) for k, v in b_dict.items()
+            }
+        else:
+            process_b_dict = b_dict
+
+        for i, items_tuple in enumerate(zip(*process_b_dict.values())):
+            items_dict = {k: v for k, v in zip(process_b_dict.keys(), items_tuple)}
+            output_tuple = self.compose(**items_dict)
+            for output, name in zip(output_tuple, self.parameter_order):
+                if process_b_dict.setdefault(name, None) is not None:
+                    process_b_dict[name][i] = output
+
+        assert (
+            process_b_dict['frames'].shape[-2:] == self.target_size
+        ), f"The size of input parameters are not same with target_size {self.target_size} please use useBuffer=True"
+        return process_b_dict['frames'], process_b_dict['labels'], process_b_dict['features']
 
     def __repr__(self) -> str:
         format_string = self.__class__.__name__ + "("
@@ -95,7 +128,7 @@ class IterativeCustomCompose:
 
 
 def RandomCrop(crop_size=(224, 224), p=0.5):
-    def __RandomCrop(features: torch.Tensor, frames: torch.Tensor, labels: torch.Tensor):
+    def __RandomCrop(frames: torch.Tensor, labels: torch.Tensor, features: torch.Tensor):
         if random.random() < p:
             t, l, h, w = transforms.RandomCrop.get_params(frames, crop_size)
 
@@ -103,7 +136,7 @@ def RandomCrop(crop_size=(224, 224), p=0.5):
             frames = TF.crop(frames, t, l, h, w)
             labels = TF.crop(labels, t, l, h, w)
 
-        return features, frames, labels
+        return frames, labels, features
 
     return __RandomCrop
 
@@ -114,7 +147,7 @@ def RandomResizedCrop(
     ratio: List[float] = (3.0 / 5.0, 2.0 / 1.0),
     p: float = 0.5,
 ):
-    def __RandomResizedCrop(features: torch.Tensor, frames: torch.Tensor, labels: torch.Tensor):
+    def __RandomResizedCrop(frames: torch.Tensor, labels: torch.Tensor, features: torch.Tensor):
         if random.random() < p:
             t, l, h, w = transforms.RandomResizedCrop.get_params(frames, scale, ratio)
             features = TF.resized_crop(features, t, l, h, w, size=sizeHW, antialias=True)
@@ -127,6 +160,6 @@ def RandomResizedCrop(
             # if isinstance(labels, torch.Tensor):
             labels = TF.resize(labels, size=sizeHW, interpolation=InterpolationMode.NEAREST)
 
-        return features, frames, labels
+        return frames, labels, features
 
     return __RandomResizedCrop

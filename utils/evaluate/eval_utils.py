@@ -18,7 +18,7 @@ from submodules.UsefulFileTools.FileOperator import check2create_dir
 
 
 ACC_NAMES = ['Prec', 'Recall', 'FNR', 'F_score', 'ACC']
-LOSS_NAMES = ['Loss']
+LOSS_NAMES = ['IoULoss']
 ORDER_NAMES = [*ACC_NAMES, *LOSS_NAMES]
 
 
@@ -28,7 +28,7 @@ class EvalMeasure(nn.Module):
         self.thresh = thresh
         self.loss_func = loss_func
 
-    def forward(self, gts: torch.Tensor, preds: torch.Tensor, vid_indices: torch.Tensor) -> torch.Tensor:
+    def forward(self, gts: torch.Tensor, preds: torch.Tensor, preds_mask: torch.Tensor, vid_indices: torch.Tensor) -> torch.Tensor:
         '''
         gts, preds : 4-dimension -> batch * channel * im_height * im_width. (batch, channel, height, width)
         vid_indices: 2-dimension -> batch * 1. (batch, vid_idx)
@@ -36,11 +36,9 @@ class EvalMeasure(nn.Module):
         '''
 
         losses = self.loss_func(preds, gts)
-
         gts = gts.type(torch.int32)
-        preds = torch.where(preds > self.thresh, 1, 0).type(dtype=torch.int32)
 
-        diff = gts ^ preds
+        diff = gts ^ preds_mask
         same = diff ^ torch.ones_like(diff)
         gt_1 = gts == 1
         gt_0 = gts == 0
@@ -55,8 +53,8 @@ class EvalMeasure(nn.Module):
         return torch.cat((tp, fp, tn, fn, losses, vid_indices), dim=1)
 
 
-class OneEpochVideosAccumulation:
-    '''The `OneEpochVideosAccumulation` class accumulates and updates statistics for video features during one epoch of training.'''
+class OneEpochVideosAccumulator:
+    '''The `OneEpochVideosAccumulator` class accumulates and updates statistics for video features during one epoch of training.'''
 
     id2vid = ID2VID
     vid2id = VID2ID
@@ -66,19 +64,28 @@ class OneEpochVideosAccumulation:
 
     def __init__(self) -> None:
         self.vid_matrix: dict[int : torch.Tensor] = dict()
+        # {id: [tp, fp, tn, fn, losses, accumulative_times]}
+        self.pixelLevel_matrix: torch.Tensor = torch.zeros(6, dtype=torch.float64, device='cpu')
+        self.pixelLevel_loss_1000: torch.Tensor = torch.zeros(2, dtype=torch.float64, device='cpu')
 
     def accumulate(self, result: torch.Tensor) -> None:
         result = result.to('cpu')
         for feature in result:
             vid_idx = int(feature[-1])
             if self.vid_matrix.get(vid_idx, None) is None:
-                # {id: [tp, fp, tn, fn, losses, accumulative_times]}
-                self.vid_matrix[vid_idx] = torch.zeros(6, dtype=torch.float64, device='cpu')
+                self.vid_matrix[vid_idx] = torch.zeros_like(self.pixelLevel_matrix)
 
             vid_matrix = self.vid_matrix[vid_idx]
             vid_matrix[:-2] += feature[:-2]
-            vid_matrix[-2] = (vid_matrix[-2] * vid_matrix[-1] + feature[-2]) / (vid_matrix[-1] + 1)
+            vid_matrix[-2] += feature[-2]
             vid_matrix[-1] += 1
+
+            self.pixelLevel_matrix[:-2] += vid_matrix[:-2]
+            self.pixelLevel_matrix[-1] += 1
+            if self.pixelLevel_matrix[-1] % 1000 == 0:
+                self.pixelLevel_loss_1000[-2] += self.pixelLevel_matrix[-2] / 1000
+                self.pixelLevel_loss_1000[-1] += 1
+                self.pixelLevel_matrix[-2:] = 0
 
 
 class BasicRecord:
@@ -136,31 +143,39 @@ class SummaryRecord:
         self.mode = mode
         self.acc_func = acc_func
 
-        self.cate_records: Dict[int, BasicRecord] = {}
-        self.video_records: Dict[int, BasicRecord] = {}
+        self.cate_dict: Dict[int, BasicRecord] = {}
+        self.video_dict: Dict[int, BasicRecord] = {}
 
-        self.overall_record = BasicRecord('Overall', num_epoch)  # internal manipulate, auto calculate
-        self.pixelLevel_record = BasicRecord('PixelLevel', num_epoch)  # external manipulate
+        self.overall = BasicRecord('Overall', num_epoch)  # internal manipulate, auto calculate
+        self.pixelLevel = BasicRecord('PixelLevel', num_epoch)  # external manipulate
 
-    def records(self, videosAccumulation: OneEpochVideosAccumulation):
+    def records(self, videosAccumulator: OneEpochVideosAccumulator):
         vid: int
         k: torch.Tensor
-        for vid, k in videosAccumulation.vid_matrix.items():
-            self.video_records.setdefault(vid, BasicRecord(ID2VID[vid], self.num_epoch)).record(*self.acc_func(*k[:-2]), k[-2])
-            self.write2tensorboard(task_name=f'{ID2CAT[vid // 10]}/{ID2VID[vid]}', scores=self.video_records[vid].last_scores)
+        for vid, k in videosAccumulator.vid_matrix.items():
+            self.video_dict.setdefault(vid, BasicRecord(ID2VID[vid], self.num_epoch)).record(*self.acc_func(*k[:-2]), k[-2] / k[-1])
+            self.write2tensorboard(task_name=f'{ID2CAT[vid // 10]}/{ID2VID[vid]}', scores=self.video_dict[vid].last_scores)
 
         cid_freq = {}
-        for vid, video_record in self.video_records.items():
+        for vid, video_record in self.video_dict.items():
             cid = vid // 10
             cid_freq[cid] = cid_freq.setdefault(cid, 0) + 1
 
-            self.cate_records.setdefault(cid, BasicRecord(ID2CAT[cid], self.num_epoch))
-            cate_record = self.cate_records[cid]
+            self.cate_dict.setdefault(cid, BasicRecord(ID2CAT[cid], self.num_epoch))
+            cate_record = self.cate_dict[cid]
             cate_record.record(*((cate_record.last_scores * (cid_freq[cid] - 1) + video_record.last_scores) / cid_freq[cid]))
-            self.write2tensorboard(task_name=str(ID2CAT[cid]), scores=self.cate_records[cid].last_scores)
+            self.write2tensorboard(task_name=str(ID2CAT[cid]), scores=self.cate_dict[cid].last_scores)
 
-        self.overall_record.record(*torch.stack([cate_record.last_scores for cate_record in self.cate_records.values()]).mean(0))
-        self.write2tensorboard(task_name=self.mode, scores=self.overall_record.last_scores)
+        self.overall.record(*torch.stack([cate_record.last_scores for cate_record in self.cate_dict.values()]).mean(0))
+        self.write2tensorboard(task_name=self.overall.task_name, scores=self.overall.last_scores)
+
+        pixelLevel_matrix = videosAccumulator.pixelLevel_matrix
+        pixelLevel_matrix[-2] = pixelLevel_matrix[-2] / pixelLevel_matrix[-1]
+        pixelLevel_loss = (
+            pixelLevel_matrix[-2] + videosAccumulator.pixelLevel_loss_1000[-2] * videosAccumulator.pixelLevel_loss_1000[-1] * 1000
+        ) / (pixelLevel_matrix[-2] + videosAccumulator.pixelLevel_loss_1000[-1] * 1000)
+        self.pixelLevel.record(*self.acc_func(*pixelLevel_matrix[:-2]), pixelLevel_loss)
+        self.write2tensorboard(task_name=self.pixelLevel.task_name, scores=self.pixelLevel.last_scores)
 
     def write2tensorboard(self, task_name: str, scores: torch.Tensor):
         for name, score in zip(ORDER_NAMES, scores):
@@ -169,13 +184,13 @@ class SummaryRecord:
     def export2csv(self):
         main_saveDir = f'{self.saveDir}/{self.mode}'
         check2create_dir(main_saveDir)
-        self.overall_record.save(main_saveDir)
-        self.pixelLevel_record.save(main_saveDir)
+        self.overall.save(main_saveDir)
+        self.pixelLevel.save(main_saveDir)
 
-        for cate_record in self.cate_records.values():
+        for cate_record in self.cate_dict.values():
             cate_record.save(main_saveDir)
 
-        for id, video_record in self.video_records.items():
+        for id, video_record in self.video_dict.items():
             sub_saveDir = f'{main_saveDir}/{ID2CAT[id // 10]}'
             check2create_dir(sub_saveDir)
             video_record.save(sub_saveDir)
@@ -221,13 +236,14 @@ if __name__ == "__main__":
         device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
         gts = torch.cat(gts, dim=0).reshape(len(gts), 1, 224, 224).to(device=device)
         preds = torch.zeros_like(gts, device=device)
+        preds_mask = torch.zeros_like(gts, dtype=torch.int32, device=device)
         vid_indices = torch.tensor(vid_indices).reshape(5, 1).to(device=device, dtype=torch.int32)
 
         with torch.no_grad():
-            result = eval(gts, preds, vid_indices)
+            result = eval(gts, preds, preds_mask, vid_indices)
         print(result)
 
-        video_acc = OneEpochVideosAccumulation()
+        video_acc = OneEpochVideosAccumulator()
         video_acc.accumulate(result)
         print(video_acc.vid_matrix)
 
@@ -245,10 +261,10 @@ if __name__ == "__main__":
     test_summary.records(video_acc)
 
     for epoch in range(49):
-        if len(test_summary.cate_records) != 0:
+        if len(test_summary.cate_dict) != 0:
             BasicRecord.next_row()
-        train_video_acc = OneEpochVideosAccumulation()
-        test_video_acc = OneEpochVideosAccumulation()
+        train_video_acc = OneEpochVideosAccumulator()
+        test_video_acc = OneEpochVideosAccumulator()
         for video_acc in [train_video_acc, test_video_acc]:
             result = torch.randint(0, 1000, size=(5, 6), dtype=torch.float32)
             result[:, -1] = torch.arange(12, 60, 10)
@@ -256,10 +272,10 @@ if __name__ == "__main__":
         train_summary.records(train_video_acc)
         test_summary.records(test_video_acc)
 
-    print(train_summary.cate_records)
-    print(train_summary.video_records)
-    print(test_summary.cate_records)
-    print(test_summary.video_records)
+    print(train_summary.cate_dict)
+    print(train_summary.video_dict)
+    print(test_summary.cate_dict)
+    print(test_summary.video_dict)
 
     #  ==============
     train_summary.records(video_acc)

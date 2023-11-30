@@ -36,11 +36,13 @@
         "BSUV",
         "dsize",
         "groundtruth",
+        "hstack",
         "Jaccard",
         "keepdim",
         "nparray",
         "Prec",
         "tensorboard",
-        "tvtf"
+        "tvtf",
+        "unsqueeze"
     ]
 }

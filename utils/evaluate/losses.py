@@ -21,7 +21,7 @@ class CDNet2014_JaccardLoss(nn.Module):
         self.smooth = smooth
         self.nonvalid = nonvalid
 
-    def forward(self, inputs: torch.Tensor, targets: torch.Tensor):
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         inputs, targets = inputs.flatten(1), targets.flatten(1)
         masks = torch.where(inputs == self.nonvalid, 0, 1).type(torch.bool)
 

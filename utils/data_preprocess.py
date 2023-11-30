@@ -78,7 +78,7 @@ if __name__ == '__main__':
 
     from submodules.UsefulFileTools.FileOperator import get_filenames
 
-    filenames = sorted(get_filenames('Data/CDNet2014/**/groundtruth', '*.png'))
+    filenames = sorted(get_filenames('Data/currentFr/**/groundtruth', '*.png'))
     print(len(filenames))
 
     # ! Test for CDNet2014

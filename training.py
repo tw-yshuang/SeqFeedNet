@@ -1,13 +1,15 @@
 import random
 from pathlib import Path
-from typing import Callable, List
+from typing import Callable, Generator, List, Tuple
 
 from tqdm import tqdm
 from rich.table import Table
 from rich.console import Console
+from rich.progress import track
 import torch
 from torch import nn
-from torch.utils.data import DataLoader
+from torch import optim
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
 from models.unet import unet_vgg16 as FEModel
@@ -16,7 +18,15 @@ from utils.data_process import CDNet2014Dataset
 from utils.transforms import IterativeCustomCompose
 from utils.evaluate.losses import CDNet2014_JaccardLoss as Loss
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
-from utils.evaluate.eval_utils import ORDER_NAMES, SummaryRecord, BasicRecord, OneEpochVideosAccumulation, EvalMeasure
+from utils.evaluate.eval_utils import (
+    ACC_NAMES,
+    LOSS_NAMES,
+    ORDER_NAMES,
+    SummaryRecord,
+    BasicRecord,
+    OneEpochVideosAccumulator,
+    EvalMeasure,
+)
 from submodules.UsefulFileTools.WordOperator import str_format
 from submodules.UsefulFileTools.PickleOperator import load_pickle
 
@@ -32,31 +42,35 @@ class DL_Model:
         self,
         FE_model: nn.Module | FEModel,
         ME_model: nn.Module | MEModel,
+        optimizer: optim.Optimizer,
         train_transforms: IterativeCustomCompose,
         test_transforms: IterativeCustomCompose = None,
         acc_func: Callable = acc_func,
         loss_func: Callable = Loss(),
         eval_measure: EvalMeasure | nn.Module = EvalMeasure(0.5, Loss(reduction='none')),
         device: str = get_device(),
+        is3dModel: bool = True,
     ) -> None:
         self.FE_model = FE_model
         self.ME_model = ME_model
+        self.optimizer = optimizer
         self.train_transforms = train_transforms
         self.test_transforms = test_transforms
         self.acc_func = acc_func
         self.loss_func = loss_func
         self.eval_measure = eval_measure
         self.device = device
+        self.is3dModel = is3dModel
 
         self.console = Console()
         self.epoch = 0
         self.best_epoch = 0
         self.best_records = torch.zeros(len(ORDER_NAMES), dtype=torch.float32) * 0
-        self.best_records[-1] = 100
 
-        self.train_summary: SummaryRecord
-        self.val_summary: SummaryRecord
-        self.test_summary: SummaryRecord
+        self.loss_idx = -len(LOSS_NAMES)
+        self.best_records[self.loss_idx :] = 100
+
+        self.summaries: List[SummaryRecord] = []  # [train_summary, val_summary, test_summary]
 
     def create_measure_table(self):
         measure_table = Table(show_header=True, header_style='bold magenta')
@@ -66,35 +80,88 @@ class DL_Model:
 
         return measure_table
 
-    def testing(self, loader: DataLoader):
-        num_iter = 0
-        self.model.eval()
-        loss_record = torch.zeros_like(self.best_loss_record)
-        acc_record = torch.zeros_like(self.best_acc_record)
+    def testing(self, dataset: CDNet2014Dataset | Dataset):
+        videos_accumulator = OneEpochVideosAccumulator()
+
+        self.FE_model.eval()
+        self.ME_model.eval()
+
         with torch.no_grad():
-            for data, label, hit_idxs, isHits, _ in tqdm(loader):
-                data, label = data.to(self.device), label.to(self.device)
+            video_id: int
+            features: torch.Tensor
+            frame: torch.Tensor
+            label: torch.Tensor
+            test_iter: Generator[Tuple[torch.Tensor, torch.Tensor]]
+            for video_id, features, test_iter in track(dataset, "Test Video Processing..."):
+                video_id = torch.tensor(video_id).to(self.device).reshape(1, 1)
+                features = features.to(self.device).unsqueeze(0)
 
-                batch_coordXYs = torch.stack(
-                    [label[:, self.model_operator.end_idx_orders[-2] :: 2], label[:, self.model_operator.end_idx_orders[-2] + 1 :: 2]],
-                ).permute(
-                    1, 0, 2
-                )  # stack like: [[relatedX, ...], [relatedY, ...]]
+                for i, (frame, label) in enumerate(test_iter):
+                    frame, label = frame.to(self.device).unsqueeze(1), label.to(self.device).unsqueeze(1)
+                    if torch.isnan(frame).any():
+                        aa = 0
+                    if i != 0:
+                        frame, label, _ = self.test_transforms(frame, label, None)
+                    else:
+                        frame, label, features = self.test_transforms(frame, label, features)
+                        bg_only_img = features[:, 0].unsqueeze(1)
 
-                data, batch_coordXYs = self.test_transforms(data, batch_coordXYs)
-                batch_coordXYs = batch_coordXYs.permute(1, 0, 2)
-                label[:, self.model_operator.end_idx_orders[-2] :: 2] = batch_coordXYs[0]
-                label[:, self.model_operator.end_idx_orders[-2] + 1 :: 2] = batch_coordXYs[1]
+                    if torch.isnan(frame).any():
+                        aa = 0
 
-                pred = self.model(data)
-                loss_record[:] += self.model_operator.update(pred, label, isTrain=False).cpu()
-                acc_record[:] += self.acc_func(pred, label, hit_idxs, isHits).cpu()
-                num_iter += 1
+                    combine_features = torch.hstack((features, bg_only_img))
+                    combine_features: torch.Tensor
+                    if torch.isnan(combine_features).any():
+                        aa = 0
+                    if not self.is3dModel:
+                        frame = frame.squeeze(1)
+                        if combine_features.dim() == 5:
+                            combine_features = combine_features.reshape(
+                                combine_features.shape[0],
+                                combine_features.shape[1] * combine_features.shape[2],
+                                *combine_features.shape[3:],
+                            )
 
-        loss_record /= num_iter
-        acc_record /= num_iter
+                    features = self.FE_model(combine_features)
+                    if torch.isnan(features).any():
+                        aa = 0
 
-        return loss_record, acc_record
+                    # std, mean = torch.std_mean(features, dim=0)
+                    mean = features.mean(dim=0, keepdim=True)
+                    std = features.std(dim=0, unbiased=False, keepdim=True)
+                    features = (features - mean) / (std + 0.0001)
+                    if torch.isnan(features).any():
+                        aa = 0
+
+                    combine_features = torch.hstack((features, frame))
+                    pred: torch.Tensor = self.ME_model(combine_features)
+                    loss: torch.Tensor = self.loss_func(pred, label)
+
+                    if torch.isnan(pred).any():
+                        aa = 0
+
+                    pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
+                    bg_only_img = frame * (1 - pred_mask)
+                    videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
+                    videos_accumulator.pixelLevel_matrix[-2] += loss.to('cpu')  # pixelLevel loss is different with others
+                    videos_accumulator.pixelLevel_matrix[-1] += 1  # accumulative_times += 1
+            self.summaries[-1].records(videos_accumulator)
+
+    def validating(self, loader: DataLoader):
+        videos_accumulator = OneEpochVideosAccumulator()
+
+        self.FE_model.eval()
+        self.ME_model.eval()
+
+        with torch.no_grad():
+            video_id: torch.IntTensor
+            features: torch.Tensor
+            frames: torch.Tensor
+            labels: torch.Tensor
+            for video_id, frames, labels, features in tqdm(loader):
+                self.proposed_training_method(video_id, features, frames, labels, videos_accumulator, self.test_transforms)
+
+            self.summaries[1].records(videos_accumulator)
 
     def training(
         self,
@@ -103,141 +170,170 @@ class DL_Model:
         val_loader: DataLoader = None,
         test_set: CDNet2014Dataset = None,
         saveDir: Path = PROJECT_DIR,
-        useSummary: bool = True,
         early_stop: int = 50,
         checkpoint: int = 20,
         *args,
         **kwargs,
     ):
-        data: torch.Tensor
-        label: torch.Tensor
-        hit_idxs: torch.Tensor
-        isHits: torch.Tensor
+        summary_path = f'{saveDir}/summary'
+        writer = SummaryWriter(summary_path)
+        self.summaries = [
+            SummaryRecord(writer, summary_path, num_epoch) for data in [train_loader, val_loader, test_set] if data is not None
+        ]
+        for data, name in zip([train_loader, val_loader, test_set], ['Train', 'Val', 'Test']):
+            if data is not None:
+                self.summaries.append(SummaryRecord(writer, summary_path, num_epoch, mode=name))
 
-        if useSummary:
-            summary_path = f'{saveDir}/summary/'
-            self.train_summary = SummaryRecord(SummaryWriter(summary_path), summary_path, num_epoch)
-        #     pixelLevel_record = self.train_summary.pixelLevel_record
-        # else:
-        #     pixelLevel_record = BasicRecord('PixelLevel', num_epoch)
+        best_acc_record, best_loss_records = self.best_records[: self.loss_idx], self.best_records[self.loss_idx :]
 
         isStop = False
         for self.epoch in range(num_epoch):
+            BasicRecord.row_id = self.epoch
             measure_table = self.create_measure_table()
+            videos_accumulator = OneEpochVideosAccumulator()
 
             isBest = False
 
-            # self.FE_model.train()
-            # self.ME_model.train()
+            self.FE_model.train()
+            self.ME_model.train()
 
-            cate_id: int
-            video_id: int
+            video_id: torch.IntTensor
             features: torch.Tensor
             frames: torch.Tensor
             labels: torch.Tensor
-            for (cate_id, video_id), features, frames, labels in tqdm(loader):
-                features = features.to(self.device)
-                frames = frames.to(self.device)
-                labels = labels.to(self.device)
+            for video_id, frames, labels, features in tqdm(loader):
+                loss = self.proposed_training_method(video_id, features, frames, labels, videos_accumulator, self.train_transforms)
+                loss.backward()
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
-                with torch.no_grad():
-                    features, frames, labels = self.train_transforms(features, frames, labels)
+            self.summaries[0].records(videos_accumulator)
 
-                bg_only_imgs = features[:, 0].unsqueeze(1)
-                for step in range(frames.shape[1]):
-                    frame, label = frames[:, step], labels[:, step]
+            measure_table.add_row('Train', *[f'{l:.3e}' for l in self.summaries[0].pixelLevel.last_scores])
 
-                    combine_features = torch.hstack((features, bg_only_imgs))
+            data_infos = [val_loader, test_set]
+            checker_active_idx = 1 - data_infos.count(None)  # best record priority: test > val
+            for i, (data_info, tasking, name) in enumerate(zip(data_infos, [self.validating, self.testing], ['Val', 'Test'])):
+                if data_info is None:
+                    continue
 
-                    features = self.FE_model(combine_features)
+                tasking(data_info)
+                measure_table.add_row(name, *[f'{l:.3e}' for l in self.summaries[-1].pixelLevel.last_scores])
 
-                    combine_features = torch.hstack((features, frame))
-                    preds = self.ME_model(combine_features)
-                    preds = self.loss_func(preds)
+                if i != checker_active_idx:
+                    continue
+                best_loss_checker = best_loss_records > self.summaries[-1].overall.last_scores[self.loss_idx :]
+                best_loss_records[best_loss_checker] = self.summaries[-1].overall.last_scores[self.loss_idx :][best_loss_checker]
 
-        #         pred = self.model(data)
-        #         loss_records[self.epoch] += self.model_operator.update(pred, label).cpu()
-        #         a_r = self.acc_func(pred, label, hit_idxs, isHits).cpu()
-        #         num_missM_nan += 1 - (a_r[-1] // (a_r[-1] - 0.0000001))
-        #         acc_records[self.epoch] += a_r
-        #         num_iter += 1
+                best_acc_checker = best_acc_record < self.summaries[-1].overall.last_scores[: self.loss_idx]
+                best_acc_record[best_acc_checker] = self.summaries[-1].overall.last_scores[: self.loss_idx][best_acc_checker]
 
-        #     loss_records[self.epoch] /= num_iter
-        #     acc_records[self.epoch, :-2] /= num_iter
-        #     acc_records[self.epoch, -2:] /= num_iter - num_missM_nan
+                if best_acc_checker.any() or best_loss_checker.any():
+                    self.best_epoch = self.epoch
+                    isBest = True
 
-        #     loss_table.add_row('Train', *[f'{l:.3e}' for l in loss_records[self.epoch]])
-        #     acc_table.add_row('Train', *[f'{a:.3f}' for a in acc_records[self.epoch]])
+            self.console.print(measure_table)
 
-        #     if val_loader is not None:
-        #         val_loss_records[self.epoch], val_acc_records[self.epoch] = self.validating(val_loader)
+            # * Save Stage
+            isCheckpoint = self.epoch % checkpoint == 0
+            if self.best_epoch:
+                save_path = f'loss-{best_loss_records[-1]:.3e}_F1-{best_acc_record[3]:.3f}'
+                isStop = early_stop == (self.epoch - self.best_epoch)
+            else:
+                save_path = f'loss-{self.summaries[0].overall.last_scores[-1]:.3e}_acc-{self.summaries[0].overall.last_scores[3]:.3f}'
 
-        #         loss_table.add_row('val', *[f'{l:.3e}' for l in val_loss_records[self.epoch]])
-        #         acc_table.add_row('val', *[f'{a:.3f}' for a in val_acc_records[self.epoch]])
+            save_path_heads: List[str] = []
+            if isCheckpoint:
+                save_path_heads.append(f'checkpoint_e{self.epoch:03}')
+            if isBest:
+                save_path_heads.extend(
+                    [f'bestLoss-{name}' for name, is_best in zip(LOSS_NAMES, best_loss_checker) if is_best],
+                )
+                save_path_heads.extend(
+                    [f'bestAcc-{name}' for name, is_best in zip(ACC_NAMES, best_acc_checker) if is_best],
+                )
 
-        #         best_loss_checker = self.best_loss_record > val_loss_records[self.epoch]
-        #         self.best_loss_record[best_loss_checker] = val_loss_records[self.epoch, best_loss_checker]
+            isStop += self.epoch + 1 == num_epoch
+            if isStop:
+                save_path_heads.append(f'final_e{self.epoch:03}_')
 
-        #         best_acc_checker = self.best_acc_record < val_acc_records[self.epoch]
-        #         self.best_acc_record[best_acc_checker] = val_acc_records[self.epoch, best_acc_checker]
+            for i, path_head in enumerate(save_path_heads):
+                if i == 0:
+                    epoch_path = f'e{self.epoch:03}_{save_path}'
+                    self.save(self.FE_model, self.ME_model, str(saveDir / epoch_path))
+                    print(f"Save Model: {str_format(str(epoch_path), fore='g')}")
+                    [summary.export2csv() for summary in self.summaries]
 
-        #         if best_acc_checker.any() or best_loss_checker.any():
-        #             self.best_epoch = self.epoch
-        #             isBest = True
+                path: Path = saveDir / f'{path_head}.pt'
+                path.unlink(missing_ok=True)
+                path.symlink_to(epoch_path)
+                print(f"symlink: {str_format(str(path_head), fore='y'):<36} -> {epoch_path}")
 
-        #     self.console.print(loss_table)
-        #     self.console.print(acc_table)
+            if isStop:
+                print(str_format("Stop!!", fore='y'))
+                break
 
-        #     # * Save Stage
-        #     isCheckpoint = self.epoch % checkpoint == 0
-        #     if self.best_epoch:
-        #         save_path = f'lossSum-{val_loss_records[self.epoch, -1]:.3e}_accMean-{val_acc_records[self.epoch, -6]:.3f}.pt'
-        #         isStop = early_stop == (self.epoch - self.best_epoch)
-        #     else:
-        #         save_path = f'lossSum-{loss_records[self.epoch, -1]:.3e}_accMean-{acc_records[self.epoch, -6]:.3f}.pt'
+    def proposed_training_method(
+        self,
+        video_id: torch.Tensor,
+        features: torch.Tensor,
+        frames: torch.Tensor,
+        labels: torch.Tensor,
+        videos_accumulator: OneEpochVideosAccumulator,
+        transforms: IterativeCustomCompose,
+    ):
+        video_id = video_id.to(self.device).unsqueeze(1)
+        features = features.to(self.device)
+        frames = frames.to(self.device)
+        labels = labels.to(self.device)
 
-        #     save_path_heads: List[str] = []
-        #     if isCheckpoint:
-        #         save_path_heads.append(f'checkpoint_e{self.epoch:03}')
-        #     if isBest:
-        #         save_path_heads.extend(
-        #             [f'bestLoss-{name}' for name, is_best in zip(self.loss_order_names, best_loss_checker) if is_best],
-        #         )
-        #         save_path_heads.extend(
-        #             [f'bestAcc-{name}' for name, is_best in zip(self.acc_order_names, best_acc_checker) if is_best],
-        #         )
+        with torch.no_grad():
+            frames, labels, features = transforms(frames, labels, features)
 
-        #     isStop += self.epoch + 1 == num_epoch
-        #     if isStop:
-        #         save_path_heads.append(f'final_e{self.epoch:03}_')
+        bg_only_imgs = features[:, 0].unsqueeze(1)
+        for step in range(frames.shape[1]):
+            with torch.no_grad():
+                frame, label = frames[:, step], labels[:, step]
+                combine_features = torch.hstack((features, bg_only_imgs))
 
-        #     for i, path_head in enumerate(save_path_heads):
-        #         if i == 0:
-        #             epoch_path = f'e{self.epoch:03}_{save_path}'
-        #             self.model_operator.save(self.model, str(saveDir / epoch_path))
-        #             print(f"Save Model: {str_format(str(epoch_path), fore='g')}")
-        #             model_perform = ModelPerform(
-        #                 self.loss_order_names,
-        #                 self.acc_order_names,
-        #                 loss_records[: self.epoch + 1],
-        #                 acc_records[: self.epoch + 1],
-        #                 val_loss_records[: self.epoch + 1],
-        #                 val_acc_records[: self.epoch + 1],
-        #             )
-        #             model_perform.save(str(saveDir))
+                if not self.is3dModel:
+                    frame = frame.squeeze(1)
+                    if combine_features.dim() == 5:
+                        combine_features = combine_features.reshape(
+                            combine_features.shape[0],
+                            combine_features.shape[1] * combine_features.shape[2],
+                            *combine_features.shape[3:],
+                        )
 
-        #         path: Path = saveDir / f'{path_head}.pt'
-        #         path.unlink(missing_ok=True)
-        #         path.symlink_to(epoch_path)
-        #         print(f"symlink: {str_format(str(path_head), fore='y'):<36} -> {epoch_path}")
+            features = self.FE_model(combine_features)
+            mean = features.mean(dim=0, keepdim=True)
+            std = features.std(dim=0, unbiased=False, keepdim=True)
+            features = (features - mean) / (std + 0.0001)
+            if torch.isnan(features).any():
+                a = 0
 
-        #     if isStop:
-        #         print(str_format("Stop!!", fore='y'))
-        #         break
+            combine_features = torch.hstack((features, frame))
+            pred: torch.Tensor = self.ME_model(combine_features)
+            loss: torch.Tensor = self.loss_func(pred, label)
+            if torch.isnan(pred).any():
+                a = 0
 
-        # if val_loader is None:
-        #     return loss_records, acc_records
-        # return loss_records, acc_records, val_loss_records, val_acc_records
+            with torch.no_grad():
+                pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
+                bg_only_imgs = frame * (1 - pred_mask)
+                videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
+                videos_accumulator.pixelLevel_matrix[-2] += loss.to('cpu')  # pixelLevel loss is different with others
+                videos_accumulator.pixelLevel_matrix[-1] += 1  # accumulative_times += 1
+
+        return loss
+
+    def save(self, fe_model: FEModel | nn.Module, me_model: MEModel | nn.Module, path: str, isFull: bool = False):
+        if isFull:
+            torch.save((fe_model, me_model), f'{path}.pt')
+            torch.save(self.optimizer, f'{path}_Optimizer.pickle')
+        else:
+            torch.save((fe_model.state_dict(), me_model.state_dict()), f'{path}.pt')
+            torch.save(self.optimizer.state_dict(), f'{path}_Optimizer.pickle')
 
 
 if __name__ == '__main__':
@@ -255,7 +351,7 @@ if __name__ == '__main__':
             # transforms.ToTensor(), # already converted in the __getitem__()
             transforms.RandomChoice(
                 [
-                    transforms.RandomCrop(size=sizeHW),
+                    RandomCrop(crop_size=sizeHW, p=1.0),
                     RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
                 ]
             ),
@@ -272,24 +368,23 @@ if __name__ == '__main__':
     )
 
     argumentation_order_ls = [
-        transforms.GaussianBlur([3, 3]),
-        transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
+        # transforms.GaussianBlur([3, 3]),
+        # transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
     ]
 
-    train_iter_compose = IterativeCustomCompose([*argumentation_order_ls], transform_img_size=sizeHW)
-    test_iter_compose = None
+    train_iter_compose = IterativeCustomCompose([*argumentation_order_ls], target_size=sizeHW)
+    test_iter_compose = IterativeCustomCompose([], target_size=sizeHW)
 
-    optimizer = optim.Adam
-    lr = 1e-4
-    BATCH_SIZE = 32
-    fe_model = FEModel(9)
-    me_model = MEModel(6)
+    BATCH_SIZE = 12
+    fe_model = FEModel(9, 6).to('cuda:0')
+    me_model = MEModel(9, 1).to('cuda:0')
+    optimizer = optim.Adam(list(fe_model.parameters()) + list(me_model.parameters()), lr=0.0001)
 
     train_loader, val_loader, test_set = get_dataLoaders_and_testSet(
         dataset_cfg=DatasetConfig(),
         cv_set=5,
-        dataset_rate=1,
-        batch_size=8,
+        dataset_rate=0.7,
+        batch_size=BATCH_SIZE,
         num_workers=8,
         pin_memory=True,
         train_transforms_cpu=train_trans_cpu,
@@ -300,5 +395,5 @@ if __name__ == '__main__':
     saveDir = f'out/{time.strftime("%m%d-%H%M")}_{fe_model.__class__.__name__}-{me_model.__class__.__name__}_BS-{BATCH_SIZE}'
     check2create_dir(saveDir)
 
-    model_process = DL_Model(fe_model, me_model, train_iter_compose, test_iter_compose, device='cuda:0')
+    model_process = DL_Model(fe_model, me_model, optimizer, train_iter_compose, test_iter_compose, device='cuda:0', is3dModel=False)
     model_process.training(3, train_loader, val_loader, test_set, saveDir=Path(saveDir), early_stop=3, checkpoint=3)
