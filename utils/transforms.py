@@ -85,15 +85,6 @@ class IterativeCustomCompose:
         b_features: torch.Tensor | None = None,
         useBuffer: bool = False,
     ):
-        # if useBuffer:
-        #     process_batch_frames = torch.zeros((*b_frames.shape[0:3], *self.target_size), dtype=torch.float32).to(self.device)
-        #     process_batch_labels = torch.zeros((*b_labels.shape[0:3], *self.target_size), dtype=torch.float32).to(self.device)
-        #     process_batch_features = torch.zeros((*b_features.shape[0:3], *self.target_size), dtype=torch.float32).to(self.device)
-        # else:
-        #     process_batch_frames = b_frames
-        #     process_batch_labels = b_labels
-        #     process_batch_features = b_features
-
         b_dict: Dict[str, torch.Tensor] = {}
         for b_items, name in zip([b_frames, b_labels, b_features], self.parameter_order):
             if b_items is not None:

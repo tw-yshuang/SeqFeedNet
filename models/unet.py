@@ -13,7 +13,7 @@ from models.unet_tools import UNetDown, UNetUp, ConvSig, FCNN
 
 
 # copy from https://github.com/ozantezcan/BSUV-Net-2.0/tree/main/models
-class unet_vgg16(nn.Module):
+class UNetVgg16(nn.Module):
     """
     Args:
         inp_ch (int): Number of input channels

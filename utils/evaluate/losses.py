@@ -50,6 +50,9 @@ class CDNet2014_JaccardLoss(nn.Module):
         jac = (intersection + self.smooth) / (torch.sum(target) + torch.sum(input) - intersection + self.smooth)
         return (1 - jac) * self.smooth
 
+    def __repr__(self):
+        return 'JaccardLoss'
+
 
 # code from https://github.com/ozantezcan/BSUV-Net-2.0/blob/69dac8b9a982a136bd1a59f4fb039983e6430c13/utils/losses.py#L49
 def weighted_crossentropy(true, pred, weight_pos=15, weight_neg=1):

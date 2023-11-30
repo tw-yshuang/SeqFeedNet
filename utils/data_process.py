@@ -98,6 +98,10 @@ class CDNet2014OneCategory:
 
 
 class CDNet2014Dataset(Dataset):
+    GAP = 2
+    GAP_ARR: NDArray[np.int16]
+    CFG: DatasetConfig
+
     def __init__(
         self,
         cv_dict: Dict[str, Dict[str, List[str]]] = datasets_tr,
@@ -140,17 +144,16 @@ class CDNet2014Dataset(Dataset):
             assert isinstance(cfg, DatasetConfig), error_msg.format('cfg', DatasetConfig, 'training')
             assert isinstance(transforms_cpu, CustomCompose), error_msg.format('transforms_cpu', CustomCompose, 'training')
 
-            self.cfg = cfg
-            self.gap = self.cfg.gap_range[0]
-            gap_steps = self.cfg.gap_range[-1] // self.cfg.next_stage + 1
-            self.gap_arr: NDArray[np.int16] = np.linspace(*self.cfg.gap_range, gap_steps, dtype=np.int16)
+            CDNet2014Dataset.CFG = cfg
+            CDNet2014Dataset.GAP = self.CFG.gap_range[0]
+            CDNet2014Dataset.GAP_ARR = np.linspace(*self.CFG.gap_range, self.CFG.num_epoch, dtype=np.int16)
             self.__collect_training_data()
         else:
             assert isinstance(transforms_cpu, transforms.Compose), error_msg.format('transforms_cpu', transforms.Compose, 'testing')
             self.__collect_testing_data()
 
     def __collect_training_data(self):
-        sample4oneVideo = self.cfg.sample4oneVideo
+        sample4oneVideo = self.CFG.sample4oneVideo
 
         for cate in self.categories:
             for video in cate.videos:
@@ -200,13 +203,13 @@ class CDNet2014Dataset(Dataset):
     def __get_frameIDs(self, video: CDNet2014OneVideo, start_id: int) -> List[int]:
         len_frame = len(video.inputPaths_inROI)
 
-        if len_frame - start_id < self.cfg.frame_groups * self.gap:
-            return sorted(random.sample(range(start_id - self.cfg.frame_groups * self.gap - 1, len_frame), k=self.cfg.frame_groups))
+        if len_frame - start_id < self.CFG.frame_groups * self.GAP:
+            return sorted(random.sample(range(start_id - self.CFG.frame_groups * self.GAP - 1, len_frame), k=self.CFG.frame_groups))
 
         frame_ids: List[int] = []
         frame_id = start_id
-        for _ in range(self.cfg.frame_groups):
-            frame_id += random.randint(1, self.gap)
+        for _ in range(self.CFG.frame_groups):
+            frame_id += random.randint(1, self.GAP)
             frame_ids.append(frame_id)
 
         return frame_ids
@@ -217,7 +220,8 @@ class CDNet2014Dataset(Dataset):
 
         return np.stack([f0, f1])
 
-    def next_frame_gap(self, epoch: int = 1):
+    @classmethod
+    def next_frame_gap(cls, epoch: int = 1):
         """
         The function updates the value of the "gap" attribute based on the current epoch and the
         "next_stage" value from the configuration.
@@ -225,13 +229,14 @@ class CDNet2014Dataset(Dataset):
         Args:
           epoch (int): The epoch parameter represents the current epoch number. Defaults to 1
         """
-        self.gap = self.gap_arr[epoch // self.cfg.next_stage]
+
+        cls.GAP = cls.GAP_ARR[epoch]
 
     def __len__(self):
         return len(self.data_infos)
 
 
-def get_dataLoaders_and_testSet(
+def get_data_SetAndLoader(
     dataset_cfg: DatasetConfig = DatasetConfig(),
     cv_set: int = 1,
     dataset_rate=1.0,
@@ -241,19 +246,26 @@ def get_dataLoaders_and_testSet(
     train_transforms_cpu: CustomCompose = None,
     test_transforms_cpu: transforms.Compose = None,
     label_isShadowFG: bool = False,
+    useTestAsVal=False,
     **kwargs,
 ):
     dataset = CDNet2014Dataset(datasets_tr, cv_set, dataset_cfg, train_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=True)
     train_len = int(len(dataset) * dataset_rate)
     train_set, val_set = random_split(dataset, [train_len, len(dataset) - train_len])
-    val_set.transforms_cpu = test_transforms_cpu
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
-    if dataset_rate != 1.0:
-        val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=pin_memory)
-    else:
-        val_loader = None
 
-    test_set = CDNet2014Dataset(datasets_tr, cv_set, None, test_transforms_cpu, isShadowFG=False, isTrain=False)
+    val_loader = None
+
+    test_set = CDNet2014Dataset(datasets_tr, cv_set, dataset_cfg, test_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=False)
+    if useTestAsVal:
+        test4val_transforms_cpu = CustomCompose(test_transforms_cpu.transforms)
+        val_set = CDNet2014Dataset(
+            datasets_tr, cv_set, dataset_cfg, test4val_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=True
+        )
+        val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
+    else:
+        if dataset_rate != 1.0:
+            val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
 
     return train_loader, val_loader, test_set
 
@@ -347,8 +359,11 @@ if __name__ == '__main__':
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
-    train_loader, val_loader, test_set = get_dataLoaders_and_testSet(
-        dataset_cfg=cfg,
+    dataset_cfg = DatasetConfig()
+    dataset_cfg.next_stage = 1  # ? test used
+
+    dataset, test_set, train_loader, val_loader = get_data_SetAndLoader(
+        dataset_cfg=dataset_cfg,
         cv_set=5,
         dataset_rate=1,
         batch_size=8,
@@ -357,6 +372,7 @@ if __name__ == '__main__':
         train_transforms_cpu=train_trans_cpu,
         test_transforms_cpu=test_trans_cpu,
         label_isShadowFG=False,
+        useTestAsVal=True,
     )
 
     i = 0

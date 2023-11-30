@@ -12,8 +12,8 @@ from torch import optim
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
-from models.unet import unet_vgg16 as FEModel
-from models.unet import unet_vgg16 as MEModel
+from models.unet import UNetVgg16
+from models.SEMwithMEM import SMNet2D as Model
 from utils.data_process import CDNet2014Dataset
 from utils.transforms import IterativeCustomCompose
 from utils.evaluate.losses import CDNet2014_JaccardLoss as Loss
@@ -40,8 +40,7 @@ def get_device(id: int = 0):
 class DL_Model:
     def __init__(
         self,
-        FE_model: nn.Module | FEModel,
-        ME_model: nn.Module | MEModel,
+        model: nn.Module | Model,
         optimizer: optim.Optimizer,
         train_transforms: IterativeCustomCompose,
         test_transforms: IterativeCustomCompose = None,
@@ -49,10 +48,8 @@ class DL_Model:
         loss_func: Callable = Loss(),
         eval_measure: EvalMeasure | nn.Module = EvalMeasure(0.5, Loss(reduction='none')),
         device: str = get_device(),
-        is3dModel: bool = True,
     ) -> None:
-        self.FE_model = FE_model
-        self.ME_model = ME_model
+        self.model = model
         self.optimizer = optimizer
         self.train_transforms = train_transforms
         self.test_transforms = test_transforms
@@ -60,7 +57,6 @@ class DL_Model:
         self.loss_func = loss_func
         self.eval_measure = eval_measure
         self.device = device
-        self.is3dModel = is3dModel
 
         self.console = Console()
         self.epoch = 0
@@ -83,9 +79,7 @@ class DL_Model:
     def testing(self, dataset: CDNet2014Dataset | Dataset):
         videos_accumulator = OneEpochVideosAccumulator()
 
-        self.FE_model.eval()
-        self.ME_model.eval()
-
+        self.model.eval()
         with torch.no_grad():
             video_id: int
             features: torch.Tensor
@@ -98,50 +92,16 @@ class DL_Model:
 
                 for i, (frame, label) in enumerate(test_iter):
                     frame, label = frame.to(self.device).unsqueeze(1), label.to(self.device).unsqueeze(1)
-                    if torch.isnan(frame).any():
-                        aa = 0
                     if i != 0:
                         frame, label, _ = self.test_transforms(frame, label, None)
                     else:
                         frame, label, features = self.test_transforms(frame, label, features)
                         bg_only_img = features[:, 0].unsqueeze(1)
 
-                    if torch.isnan(frame).any():
-                        aa = 0
-
-                    combine_features = torch.hstack((features, bg_only_img))
-                    combine_features: torch.Tensor
-                    if torch.isnan(combine_features).any():
-                        aa = 0
-                    if not self.is3dModel:
-                        frame = frame.squeeze(1)
-                        if combine_features.dim() == 5:
-                            combine_features = combine_features.reshape(
-                                combine_features.shape[0],
-                                combine_features.shape[1] * combine_features.shape[2],
-                                *combine_features.shape[3:],
-                            )
-
-                    features = self.FE_model(combine_features)
-                    if torch.isnan(features).any():
-                        aa = 0
-
-                    # std, mean = torch.std_mean(features, dim=0)
-                    mean = features.mean(dim=0, keepdim=True)
-                    std = features.std(dim=0, unbiased=False, keepdim=True)
-                    features = (features - mean) / (std + 0.0001)
-                    if torch.isnan(features).any():
-                        aa = 0
-
-                    combine_features = torch.hstack((features, frame))
-                    pred: torch.Tensor = self.ME_model(combine_features)
+                    pred, frame, features = self.model(frame, features, bg_only_img)
                     loss: torch.Tensor = self.loss_func(pred, label)
 
-                    if torch.isnan(pred).any():
-                        aa = 0
-
-                    pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
-                    bg_only_img = frame * (1 - pred_mask)
+                    bg_only_img, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
                     videos_accumulator.pixelLevel_matrix[-2] += loss.to('cpu')  # pixelLevel loss is different with others
                     videos_accumulator.pixelLevel_matrix[-1] += 1  # accumulative_times += 1
@@ -150,9 +110,7 @@ class DL_Model:
     def validating(self, loader: DataLoader):
         videos_accumulator = OneEpochVideosAccumulator()
 
-        self.FE_model.eval()
-        self.ME_model.eval()
-
+        self.model.eval()
         with torch.no_grad():
             video_id: torch.IntTensor
             features: torch.Tensor
@@ -175,6 +133,12 @@ class DL_Model:
         *args,
         **kwargs,
     ):
+        # best record create
+        best_acc_record, best_loss_records = self.best_records[: self.loss_idx], self.best_records[self.loss_idx :]
+        data_infos = [val_loader, test_set]
+        checker_active_idx = 1 - data_infos.count(None)  # best record priority: test > val
+
+        # Summary created
         summary_path = f'{saveDir}/summary'
         writer = SummaryWriter(summary_path)
         self.summaries = [
@@ -184,18 +148,15 @@ class DL_Model:
             if data is not None:
                 self.summaries.append(SummaryRecord(writer, summary_path, num_epoch, mode=name))
 
-        best_acc_record, best_loss_records = self.best_records[: self.loss_idx], self.best_records[self.loss_idx :]
-
         isStop = False
         for self.epoch in range(num_epoch):
             BasicRecord.row_id = self.epoch
+            CDNet2014Dataset.next_frame_gap(self.epoch)
             measure_table = self.create_measure_table()
             videos_accumulator = OneEpochVideosAccumulator()
-
             isBest = False
 
-            self.FE_model.train()
-            self.ME_model.train()
+            self.model.train()
 
             video_id: torch.IntTensor
             features: torch.Tensor
@@ -211,8 +172,6 @@ class DL_Model:
 
             measure_table.add_row('Train', *[f'{l:.3e}' for l in self.summaries[0].pixelLevel.last_scores])
 
-            data_infos = [val_loader, test_set]
-            checker_active_idx = 1 - data_infos.count(None)  # best record priority: test > val
             for i, (data_info, tasking, name) in enumerate(zip(data_infos, [self.validating, self.testing], ['Val', 'Test'])):
                 if data_info is None:
                     continue
@@ -260,7 +219,7 @@ class DL_Model:
             for i, path_head in enumerate(save_path_heads):
                 if i == 0:
                     epoch_path = f'e{self.epoch:03}_{save_path}'
-                    self.save(self.FE_model, self.ME_model, str(saveDir / epoch_path))
+                    self.save(self.model, str(saveDir / epoch_path))
                     print(f"Save Model: {str_format(str(epoch_path), fore='g')}")
                     [summary.export2csv() for summary in self.summaries]
 
@@ -292,47 +251,30 @@ class DL_Model:
 
         bg_only_imgs = features[:, 0].unsqueeze(1)
         for step in range(frames.shape[1]):
-            with torch.no_grad():
-                frame, label = frames[:, step], labels[:, step]
-                combine_features = torch.hstack((features, bg_only_imgs))
+            frame, label = frames[:, step], labels[:, step]
 
-                if not self.is3dModel:
-                    frame = frame.squeeze(1)
-                    if combine_features.dim() == 5:
-                        combine_features = combine_features.reshape(
-                            combine_features.shape[0],
-                            combine_features.shape[1] * combine_features.shape[2],
-                            *combine_features.shape[3:],
-                        )
-
-            features = self.FE_model(combine_features)
-            mean = features.mean(dim=0, keepdim=True)
-            std = features.std(dim=0, unbiased=False, keepdim=True)
-            features = (features - mean) / (std + 0.0001)
-            if torch.isnan(features).any():
-                a = 0
-
-            combine_features = torch.hstack((features, frame))
-            pred: torch.Tensor = self.ME_model(combine_features)
+            pred, frame, features = self.model(frame, features, bg_only_imgs)
             loss: torch.Tensor = self.loss_func(pred, label)
-            if torch.isnan(pred).any():
-                a = 0
 
             with torch.no_grad():
-                pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
-                bg_only_imgs = frame * (1 - pred_mask)
+                bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                 videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
                 videos_accumulator.pixelLevel_matrix[-2] += loss.to('cpu')  # pixelLevel loss is different with others
                 videos_accumulator.pixelLevel_matrix[-1] += 1  # accumulative_times += 1
 
         return loss
 
-    def save(self, fe_model: FEModel | nn.Module, me_model: MEModel | nn.Module, path: str, isFull: bool = False):
+    def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
+        pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
+        bg_only_imgs = frame * (1 - pred_mask)
+        return bg_only_imgs, pred_mask
+
+    def save(self, model: Model | nn.Module, path: str, isFull: bool = False):
         if isFull:
-            torch.save((fe_model, me_model), f'{path}.pt')
+            torch.save(model, f'{path}.pt')
             torch.save(self.optimizer, f'{path}_Optimizer.pickle')
         else:
-            torch.save((fe_model.state_dict(), me_model.state_dict()), f'{path}.pt')
+            torch.save(model.state_dict(), f'{path}.pt')
             torch.save(self.optimizer.state_dict(), f'{path}_Optimizer.pickle')
 
 
@@ -341,10 +283,28 @@ if __name__ == '__main__':
 
     from torch import optim
     from torchvision import transforms
-    from utils.data_process import get_dataLoaders_and_testSet, DatasetConfig
+    from utils.data_process import get_data_SetAndLoader, DatasetConfig
     from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose
     from submodules.UsefulFileTools.FileOperator import check2create_dir
 
+    DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    random.seed(42)
+    torch.manual_seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(42)
+    #! ========== Hyperparameter ==========
+    # * Datasets
+    BATCH_SIZE = 9
+    NUM_WORKERS = 8
+    CV_SET = 2
+    DATA_SPLIT_RATE = 1.0
+
+    NUM_EPOCH = 200
+    EARLY_STOP = 20
+    CHECKPOINT = 10
+    DO_TESTING = False
+
+    #! ========== Augmentation ==========
     sizeHW = (224, 224)
     train_trans_cpu = CustomCompose(
         [
@@ -352,7 +312,7 @@ if __name__ == '__main__':
             transforms.RandomChoice(
                 [
                     RandomCrop(crop_size=sizeHW, p=1.0),
-                    RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
+                    # RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
                 ]
             ),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
@@ -375,25 +335,38 @@ if __name__ == '__main__':
     train_iter_compose = IterativeCustomCompose([*argumentation_order_ls], target_size=sizeHW)
     test_iter_compose = IterativeCustomCompose([], target_size=sizeHW)
 
-    BATCH_SIZE = 12
-    fe_model = FEModel(9, 6).to('cuda:0')
-    me_model = MEModel(9, 1).to('cuda:0')
-    optimizer = optim.Adam(list(fe_model.parameters()) + list(me_model.parameters()), lr=0.0001)
+    #! ========== Datasets ==========
+    dataset_cfg = DatasetConfig()
+    dataset_cfg.num_epoch = NUM_EPOCH
 
-    train_loader, val_loader, test_set = get_dataLoaders_and_testSet(
-        dataset_cfg=DatasetConfig(),
-        cv_set=5,
-        dataset_rate=0.7,
+    train_loader, val_loader, test_set = get_data_SetAndLoader(
+        dataset_cfg=dataset_cfg,
+        cv_set=CV_SET,
+        dataset_rate=DATA_SPLIT_RATE,
         batch_size=BATCH_SIZE,
-        num_workers=8,
+        num_workers=NUM_WORKERS,
         pin_memory=True,
         train_transforms_cpu=train_trans_cpu,
         test_transforms_cpu=test_trans_cpu,
         label_isShadowFG=False,
+        useTestAsVal=True,
     )
 
-    saveDir = f'out/{time.strftime("%m%d-%H%M")}_{fe_model.__class__.__name__}-{me_model.__class__.__name__}_BS-{BATCH_SIZE}'
+    #! ========== Network ==========
+
+    se_model = UNetVgg16(9, 6)
+    me_model = UNetVgg16(9, 1)
+    sm2d_net = Model(se_model, me_model, useStandardNorm4Features=True).to(DEVICE)
+    optimizer = optim.Adam(sm2d_net.parameters(), lr=1e-4)
+    loss_func = Loss(reduce='mean')
+
+    model_name = f'{sm2d_net.__class__.__name__}({se_model.__class__.__name__}-{me_model.__class__.__name__})'
+    optimizer_name = f'{optimizer.__class__.__name__}-{optimizer.defaults["lr"]:.1e}'
+    saveDir = f'out/{time.strftime("%m%d-%H%M")}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{BATCH_SIZE}'
     check2create_dir(saveDir)
 
-    model_process = DL_Model(fe_model, me_model, optimizer, train_iter_compose, test_iter_compose, device='cuda:0', is3dModel=False)
-    model_process.training(3, train_loader, val_loader, test_set, saveDir=Path(saveDir), early_stop=3, checkpoint=3)
+    #! ========== Train Process ==========
+    model_process = DL_Model(sm2d_net, optimizer, train_iter_compose, test_iter_compose, device=DEVICE, loss_func=loss_func)
+    model_process.training(
+        NUM_EPOCH, train_loader, val_loader, test_set if DO_TESTING else None, Path(saveDir), EARLY_STOP, CHECKPOINT
+    )
