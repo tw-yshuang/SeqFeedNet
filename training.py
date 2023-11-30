@@ -141,9 +141,6 @@ class DL_Model:
         # Summary created
         summary_path = f'{saveDir}/summary'
         writer = SummaryWriter(summary_path)
-        self.summaries = [
-            SummaryRecord(writer, summary_path, num_epoch) for data in [train_loader, val_loader, test_set] if data is not None
-        ]
         for data, name in zip([train_loader, val_loader, test_set], ['Train', 'Val', 'Test']):
             if data is not None:
                 self.summaries.append(SummaryRecord(writer, summary_path, num_epoch, mode=name))
