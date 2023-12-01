@@ -203,7 +203,7 @@ class CDNet2014Dataset(Dataset):
     def __get_frameIDs(self, video: CDNet2014OneVideo, start_id: int) -> List[int]:
         len_frame = len(video.inputPaths_inROI)
 
-        if len_frame - start_id < self.CFG.frame_groups * self.GAP:
+        if len_frame - start_id <= self.CFG.frame_groups * self.GAP:
             return sorted(random.sample(range(start_id - self.CFG.frame_groups * self.GAP - 1, len_frame), k=self.CFG.frame_groups))
 
         frame_ids: List[int] = []
@@ -256,11 +256,11 @@ def get_data_SetAndLoader(
 
     val_loader = None
 
-    test_set = CDNet2014Dataset(datasets_tr, cv_set, dataset_cfg, test_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=False)
+    test_set = CDNet2014Dataset(datasets_test, cv_set, dataset_cfg, test_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=False)
     if useTestAsVal:
         test4val_transforms_cpu = CustomCompose(test_transforms_cpu.transforms)
         val_set = CDNet2014Dataset(
-            datasets_tr, cv_set, dataset_cfg, test4val_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=True
+            datasets_test, cv_set, dataset_cfg, test4val_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=True
         )
         val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers, pin_memory=pin_memory)
     else:
