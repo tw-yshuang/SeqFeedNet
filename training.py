@@ -71,7 +71,7 @@ class DL_Model:
     def create_measure_table(self):
         measure_table = Table(show_header=True, header_style='bold magenta')
 
-        measure_table.add_column("", style="dim")
+        measure_table.add_column(f"e{self.epoch:03}", style='dim')
         [measure_table.add_column(name, justify='right') for name in ORDER_NAMES]
 
         return measure_table
@@ -284,7 +284,7 @@ if __name__ == '__main__':
     from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose
     from submodules.UsefulFileTools.FileOperator import check2create_dir
 
-    DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    DEVICE = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
     random.seed(42)
     torch.manual_seed(42)
     if torch.cuda.is_available():
@@ -299,7 +299,8 @@ if __name__ == '__main__':
     NUM_EPOCH = 200
     EARLY_STOP = 20
     CHECKPOINT = 10
-    DO_TESTING = False
+    DO_TESTING = True
+    useTestAsVal = False
 
     #! ========== Augmentation ==========
     sizeHW = (224, 224)
@@ -346,7 +347,7 @@ if __name__ == '__main__':
         train_transforms_cpu=train_trans_cpu,
         test_transforms_cpu=test_trans_cpu,
         label_isShadowFG=False,
-        useTestAsVal=True,
+        useTestAsVal=useTestAsVal,
     )
 
     #! ========== Network ==========
@@ -359,7 +360,7 @@ if __name__ == '__main__':
 
     model_name = f'{sm2d_net.__class__.__name__}({se_model.__class__.__name__}-{me_model.__class__.__name__})'
     optimizer_name = f'{optimizer.__class__.__name__}-{optimizer.defaults["lr"]:.1e}'
-    saveDir = f'out/{time.strftime("%m%d-%H%M")}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{BATCH_SIZE}'
+    saveDir = f'out/{time.strftime("%m%d-%H%M")}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{BATCH_SIZE}_Set-{CV_SET}'
     check2create_dir(saveDir)
 
     #! ========== Train Process ==========
