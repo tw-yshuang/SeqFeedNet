@@ -17,7 +17,7 @@ from models.unet import UNetVgg16
 from models.SEMwithMEM import SMNet2D as Model
 from utils.data_process import CDNet2014Dataset
 from utils.transforms import IterativeCustomCompose
-from utils.evaluate.losses import IOULoss4CDNet2014 as Loss
+from utils.evaluate.losses import FocalLoss4CDNet2014 as Loss
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
 from utils.evaluate.eval_utils import (
     ACC_NAMES,
@@ -231,6 +231,7 @@ class DL_Model:
                 frames, labels, features = transforms(frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
+            losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
             for step in range(frames.shape[1]):
                 frame, label = frames[:, step], labels[:, step]
 
@@ -238,15 +239,23 @@ class DL_Model:
                 pred, frame, features = self.model(frame, features, bg_only_imgs)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
-                if isTrain:
-                    loss.backward()
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
+                losses[step] = loss
+
+                # if isTrain:
+                #     loss.backward()
+                #     self.optimizer.step()
+                #     self.optimizer.zero_grad()
 
                 with torch.no_grad():
                     bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.pixelLevel_matrix[-2] += loss.item()  # pixelLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
+
+            if isTrain:
+                losses.mean().backward()
+                # losses.backward()
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
         pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
@@ -296,14 +305,14 @@ if __name__ == '__main__':
     from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose
     from submodules.UsefulFileTools.FileOperator import check2create_dir
 
-    DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
     random.seed(42)
     torch.manual_seed(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
     #! ========== Hyperparameter ==========
     # * Datasets
-    BATCH_SIZE = 27
+    BATCH_SIZE = 6
     NUM_WORKERS = 8
     CV_SET = 2
     DATA_SPLIT_RATE = 1.0
