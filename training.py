@@ -2,6 +2,7 @@ import random
 from pathlib import Path
 from typing import Callable, Generator, List, Tuple
 
+import click
 from tqdm import tqdm
 from rich.table import Table
 from rich.console import Console
@@ -16,7 +17,7 @@ from models.unet import UNetVgg16
 from models.SEMwithMEM import SMNet2D as Model
 from utils.data_process import CDNet2014Dataset
 from utils.transforms import IterativeCustomCompose
-from utils.evaluate.losses import CDNet2014_JaccardLoss as Loss
+from utils.evaluate.losses import IOULoss4CDNet2014 as Loss
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
 from utils.evaluate.eval_utils import (
     ACC_NAMES,
@@ -64,7 +65,7 @@ class DL_Model:
         self.best_records = torch.zeros(len(ORDER_NAMES), dtype=torch.float32) * 0
 
         self.loss_idx = -len(LOSS_NAMES)
-        self.best_records[self.loss_idx :] = 100
+        self.best_records[self.loss_idx :] = 1e5
 
         self.summaries: List[SummaryRecord] = []  # [train_summary, val_summary, test_summary]
 
@@ -76,7 +77,7 @@ class DL_Model:
 
         return measure_table
 
-    def testing(self, dataset: CDNet2014Dataset | Dataset):
+    def __testing(self, dataset: CDNet2014Dataset | Dataset):
         videos_accumulator = OneEpochVideosAccumulator()
 
         self.model.eval()
@@ -107,18 +108,12 @@ class DL_Model:
                     videos_accumulator.pixelLevel_matrix[-1] += 1  # accumulative_times += 1
             self.summaries[-1].records(videos_accumulator)
 
-    def validating(self, loader: DataLoader):
+    def __validating(self, loader: DataLoader):
         videos_accumulator = OneEpochVideosAccumulator()
 
         self.model.eval()
         with torch.no_grad():
-            video_id: torch.IntTensor
-            features: torch.Tensor
-            frames: torch.Tensor
-            labels: torch.Tensor
-            for video_id, frames, labels, features in tqdm(loader):
-                self.proposed_training_method(video_id, features, frames, labels, videos_accumulator, self.test_transforms)
-
+            self.proposed_training_method(loader, videos_accumulator, self.test_transforms, isTrain=False)
             self.summaries[1].records(videos_accumulator)
 
     def training(
@@ -154,22 +149,12 @@ class DL_Model:
             isBest = False
 
             self.model.train()
-
-            video_id: torch.IntTensor
-            features: torch.Tensor
-            frames: torch.Tensor
-            labels: torch.Tensor
-            for video_id, frames, labels, features in tqdm(loader):
-                loss = self.proposed_training_method(video_id, features, frames, labels, videos_accumulator, self.train_transforms)
-                loss.backward()
-                self.optimizer.step()
-                self.optimizer.zero_grad()
-
+            self.proposed_training_method(loader, videos_accumulator, self.train_transforms, isTrain=True)
             self.summaries[0].records(videos_accumulator)
 
             measure_table.add_row('Train', *[f'{l:.3e}' for l in self.summaries[0].pixelLevel.last_scores])
 
-            for i, (data_info, tasking, name) in enumerate(zip(data_infos, [self.validating, self.testing], ['Val', 'Test'])):
+            for i, (data_info, tasking, name) in enumerate(zip(data_infos, [self.__validating, self.__testing], ['Val', 'Test'])):
                 if data_info is None:
                     continue
 
@@ -192,13 +177,10 @@ class DL_Model:
 
             # * Save Stage
             isCheckpoint = self.epoch % checkpoint == 0
-            if self.best_epoch:
-                save_path = f'loss-{best_loss_records[-1]:.3e}_F1-{best_acc_record[3]:.3f}'
-                isStop = early_stop == (self.epoch - self.best_epoch)
-            else:
-                save_path = f'loss-{self.summaries[0].overall.last_scores[-1]:.3e}_acc-{self.summaries[0].overall.last_scores[3]:.3f}'
+            isStop = early_stop == (self.epoch - self.best_epoch) or num_epoch == (self.epoch + 1)
 
             save_path_heads: List[str] = []
+            save_path = f'loss-{self.summaries[-1].overall.last_scores[-1]:.3e}_F1-{self.summaries[-1].overall.last_scores[3]:.3f}'
             if isCheckpoint:
                 save_path_heads.append(f'checkpoint_e{self.epoch:03}')
             if isBest:
@@ -209,7 +191,6 @@ class DL_Model:
                     [f'bestAcc-{name}' for name, is_best in zip(ACC_NAMES, best_acc_checker) if is_best],
                 )
 
-            isStop += self.epoch + 1 == num_epoch
             if isStop:
                 save_path_heads.append(f'final_e{self.epoch:03}_')
 
@@ -231,35 +212,41 @@ class DL_Model:
 
     def proposed_training_method(
         self,
-        video_id: torch.Tensor,
-        features: torch.Tensor,
-        frames: torch.Tensor,
-        labels: torch.Tensor,
+        loader: DataLoader,
         videos_accumulator: OneEpochVideosAccumulator,
         transforms: IterativeCustomCompose,
+        isTrain: bool = True,
     ):
-        video_id = video_id.to(self.device).unsqueeze(1)
-        features = features.to(self.device)
-        frames = frames.to(self.device)
-        labels = labels.to(self.device)
-
-        with torch.no_grad():
-            frames, labels, features = transforms(frames, labels, features)
-
-        bg_only_imgs = features[:, 0].unsqueeze(1)
-        for step in range(frames.shape[1]):
-            frame, label = frames[:, step], labels[:, step]
-
-            pred, frame, features = self.model(frame, features, bg_only_imgs)
-            loss: torch.Tensor = self.loss_func(pred, label)
+        video_id: torch.IntTensor
+        features: torch.Tensor
+        frames: torch.Tensor
+        labels: torch.Tensor
+        for video_id, frames, labels, features in tqdm(loader):
+            video_id = video_id.to(self.device).unsqueeze(1)
+            features = features.to(self.device)
+            frames = frames.to(self.device)
+            labels = labels.to(self.device)
 
             with torch.no_grad():
-                bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
-                videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
-                videos_accumulator.pixelLevel_matrix[-2] += loss.to('cpu')  # pixelLevel loss is different with others
-                videos_accumulator.pixelLevel_matrix[-1] += 1  # accumulative_times += 1
+                frames, labels, features = transforms(frames, labels, features)
 
-        return loss
+            bg_only_imgs = features[:, 0].unsqueeze(1)
+            for step in range(frames.shape[1]):
+                frame, label = frames[:, step], labels[:, step]
+
+                features = features.detach()  # create a new tensor to detach previous computational graph
+                pred, frame, features = self.model(frame, features, bg_only_imgs)
+                loss: torch.Tensor = self.loss_func(pred, label)
+
+                if isTrain:
+                    loss.backward()
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+
+                with torch.no_grad():
+                    bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
+                    videos_accumulator.pixelLevel_matrix[-2] += loss.item()  # pixelLevel loss is different with others
+                    videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
         pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
@@ -275,6 +262,20 @@ class DL_Model:
             torch.save(self.optimizer.state_dict(), f'{path}_Optimizer.pickle')
 
 
+@click.command(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=120))
+@click.option('-se', '--se_network', default='UNetVgg16', help="Sequence Extract Network")
+@click.option('-me', '--me_network', default='UNetVgg16', help="Mask Extract Network")
+@click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help="Please check utils/evaluate/losses.py to find others")
+@click.option('-opt', '--optimizer', default='Adam', help="Optimizer that provide by Pytorch")
+@click.option('-lr', '--learning_rate', default=1e-4, help="Learning Rate for optimizer")
+@click.option('-set', '--set_number', default=1, help='Training and test videos will be selected based on the set number')
+@click.option('--device', default=0, help='CUDA ID, if system can not find Nvidia GPU, it will use CPU')
+@click.option('-use-opt', '--use-options', default=False, is_flag=True, help="use extra options.")
+@click.option('-ls', '--list-schedule', default=False, is_flag=True, help="list schedule that already booking.")
+def cli():
+    ...
+
+
 if __name__ == '__main__':
     import time
 
@@ -284,14 +285,14 @@ if __name__ == '__main__':
     from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose
     from submodules.UsefulFileTools.FileOperator import check2create_dir
 
-    DEVICE = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
+    DEVICE = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
     random.seed(42)
     torch.manual_seed(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
     #! ========== Hyperparameter ==========
     # * Datasets
-    BATCH_SIZE = 9
+    BATCH_SIZE = 27
     NUM_WORKERS = 8
     CV_SET = 2
     DATA_SPLIT_RATE = 1.0
@@ -299,8 +300,8 @@ if __name__ == '__main__':
     NUM_EPOCH = 200
     EARLY_STOP = 20
     CHECKPOINT = 10
-    DO_TESTING = True
-    useTestAsVal = False
+    DO_TESTING = False
+    useTestAsVal = True
 
     #! ========== Augmentation ==========
     sizeHW = (224, 224)
@@ -354,12 +355,12 @@ if __name__ == '__main__':
 
     se_model = UNetVgg16(9, 6)
     me_model = UNetVgg16(9, 1)
-    sm2d_net = Model(se_model, me_model, useStandardNorm4Features=True).to(DEVICE)
+    sm2d_net = Model(se_model, me_model, useStandardNorm4Features=False).to(DEVICE)
     optimizer = optim.Adam(sm2d_net.parameters(), lr=1e-4)
-    loss_func = Loss(reduce='mean')
+    loss_func = Loss()
 
     model_name = f'{sm2d_net.__class__.__name__}({se_model.__class__.__name__}-{me_model.__class__.__name__})'
-    optimizer_name = f'{optimizer.__class__.__name__}-{optimizer.defaults["lr"]:.1e}'
+    optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}'
     saveDir = f'out/{time.strftime("%m%d-%H%M")}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{BATCH_SIZE}_Set-{CV_SET}'
     check2create_dir(saveDir)
 

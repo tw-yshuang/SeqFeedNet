@@ -13,25 +13,26 @@ if __name__ == '__main__':
 
 from utils.DataID_MatchTable import VID2ID, CAT2ID, ID2VID, ID2CAT
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
-from utils.evaluate.losses import IOULoss4CDNet2014 as Loss
+from utils.evaluate.losses import FocalLoss4CDNet2014 as Loss
 from submodules.UsefulFileTools.FileOperator import check2create_dir
 
 
 ACC_NAMES = ['Prec', 'Recall', 'FNR', 'F_score', 'ACC']
-LOSS_NAMES = ['IoULoss']
+LOSS_NAMES = [Loss.__repr__()]
 ORDER_NAMES = [*ACC_NAMES, *LOSS_NAMES]
 
 
 class EvalMeasure(nn.Module):
     def __init__(self, thresh: float, loss_func: Loss | nn.Module = Loss(reduction='none')):
-        super().__init__()
+        super(EvalMeasure, self).__init__()
         self.thresh = thresh
         self.loss_func = loss_func
+        LOSS_NAMES[0] = str(loss_func)
 
-    def forward(self, gts: torch.Tensor, preds: torch.Tensor, preds_mask: torch.Tensor, vid_indices: torch.Tensor) -> torch.Tensor:
+    def forward(self, gts: torch.Tensor, preds: torch.Tensor, preds_mask: torch.Tensor, video_ids: torch.Tensor) -> torch.Tensor:
         '''
         gts, preds : 4-dimension -> batch * channel * im_height * im_width. (batch, channel, height, width)
-        vid_indices: 2-dimension -> batch * 1. (batch, vid_idx)
+        video_ids: 2-dimension -> batch * 1. (batch, vid_idx)
         result : 2-dimension -> batch * 5;  (batch, features) ; features-> (tp, fp, tn, fn, vid_idx)
         '''
 
@@ -50,7 +51,7 @@ class EvalMeasure(nn.Module):
         tp, fp = tp.view(batch, -1).sum(dim=1, keepdim=True), fp.view(batch, -1).sum(dim=1, keepdim=True)
         tn, fn = tn.view(batch, -1).sum(dim=1, keepdim=True), fn.view(batch, -1).sum(dim=1, keepdim=True)
 
-        return torch.cat((tp, fp, tn, fn, losses, vid_indices), dim=1)
+        return torch.cat((tp, fp, tn, fn, losses, video_ids), dim=1)
 
 
 class OneEpochVideosAccumulator:
@@ -64,18 +65,16 @@ class OneEpochVideosAccumulator:
 
     def __init__(self) -> None:
         self.vid_matrix: dict[int : torch.Tensor] = dict()
-        # {id: [tp, fp, tn, fn, losses, accumulative_times]}
+        # {id: (tp, fp, tn, fn, loss, accumulative_times)}
         self.pixelLevel_matrix: torch.Tensor = torch.zeros(6, dtype=torch.float64, device='cpu')
         self.pixelLevel_loss_1000: torch.Tensor = torch.zeros(2, dtype=torch.float64, device='cpu')
 
     def accumulate(self, result: torch.Tensor) -> None:
         result = result.to('cpu')
         for feature in result:
-            vid_idx = int(feature[-1])
-            if self.vid_matrix.get(vid_idx, None) is None:
-                self.vid_matrix[vid_idx] = torch.zeros_like(self.pixelLevel_matrix)
+            # feature: (tp, fp, tn, fn, loss, video_id)
 
-            vid_matrix = self.vid_matrix[vid_idx]
+            vid_matrix = self.vid_matrix.setdefault(int(feature[-1]), torch.zeros_like(self.pixelLevel_matrix))
             vid_matrix[:-2] += feature[:-2]
             vid_matrix[-2] += feature[-2]
             vid_matrix[-1] += 1
@@ -83,7 +82,7 @@ class OneEpochVideosAccumulator:
             self.pixelLevel_matrix[:-2] += vid_matrix[:-2]
             self.pixelLevel_matrix[-1] += 1
             if self.pixelLevel_matrix[-1] % 1000 == 0:
-                self.pixelLevel_loss_1000[-2] += self.pixelLevel_matrix[-2] / 1000
+                self.pixelLevel_loss_1000[-2] += self.pixelLevel_matrix[-2] / 1000.0
                 self.pixelLevel_loss_1000[-1] += 1
                 self.pixelLevel_matrix[-2:] = 0
 
@@ -170,7 +169,7 @@ class SummaryRecord:
         self.write2tensorboard(task_name=self.overall.task_name, scores=self.overall.last_scores)
 
         pixelLevel_matrix = videosAccumulator.pixelLevel_matrix
-        pixelLevel_matrix[-2] = pixelLevel_matrix[-2] / pixelLevel_matrix[-1]
+        pixelLevel_matrix[-2] = pixelLevel_matrix[-2] / (pixelLevel_matrix[-1] + 0.000001)
         pixelLevel_loss = (
             pixelLevel_matrix[-2] + videosAccumulator.pixelLevel_loss_1000[-2] * videosAccumulator.pixelLevel_loss_1000[-1] * 1000
         ) / (pixelLevel_matrix[-2] + videosAccumulator.pixelLevel_loss_1000[-1] * 1000)
@@ -217,7 +216,7 @@ if __name__ == "__main__":
         imgs_name = sorted(os.listdir(gts_pth))
 
         gts = list()
-        vid_indices = list()
+        video_ids = list()
         for i, img_name in enumerate(imgs_name[699:]):
             if img_name.split('.')[-1] != 'png':
                 continue
@@ -227,7 +226,7 @@ if __name__ == "__main__":
             img = cv.imread(os.path.join(gts_pth, img_name), cv.IMREAD_GRAYSCALE)
             gt = preprocess(img)
             gts.append(tvtf.ToTensor()(gt.copy()))
-            vid_indices.append(11)
+            video_ids.append(11)
             # gt[gt == 1] = 255
             # gt[gt == -1] = 128
             # gt[gt == 0] = 0
@@ -237,10 +236,10 @@ if __name__ == "__main__":
         gts = torch.cat(gts, dim=0).reshape(len(gts), 1, 224, 224).to(device=device)
         preds = torch.zeros_like(gts, device=device)
         preds_mask = torch.zeros_like(gts, dtype=torch.int32, device=device)
-        vid_indices = torch.tensor(vid_indices).reshape(5, 1).to(device=device, dtype=torch.int32)
+        video_ids = torch.tensor(video_ids).reshape(5, 1).to(device=device, dtype=torch.int32)
 
         with torch.no_grad():
-            result = eval(gts, preds, preds_mask, vid_indices)
+            result = eval(gts, preds, preds_mask, video_ids)
         print(result)
 
         video_acc = OneEpochVideosAccumulator()

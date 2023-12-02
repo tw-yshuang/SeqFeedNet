@@ -23,7 +23,7 @@ class UNetVgg16(nn.Module):
     """
 
     def __init__(self, inp_ch, out_ch, kernel_size=3, skip=True):
-        super().__init__()
+        super(UNetVgg16, self).__init__()
         self.skip = skip
         self.enc1 = UNetDown(inp_ch, 64, 2, batch_norm=True, maxpool=False, kernel_size=kernel_size)
         self.enc2 = UNetDown(64, 128, 2, batch_norm=True, maxpool=True, kernel_size=kernel_size)

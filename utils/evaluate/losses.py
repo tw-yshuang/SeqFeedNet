@@ -75,7 +75,8 @@ class IOULoss4CDNet2014(CDNet2014Convert):
         jac = (intersection + self.smooth) / (torch.sum(input_val) + torch.sum(target_val) - intersection + self.smooth)
         return (1 - jac) * self.smooth
 
-    def __repr__(self):
+    @staticmethod
+    def __repr__():
         return 'IOULoss'
 
 
@@ -135,7 +136,8 @@ class FocalLoss4CDNet2014(CDNet2014Convert):
 
         return loss if self.reduction == 'sum' else loss.mean()
 
-    def __repr__(self):
+    @staticmethod
+    def __repr__():
         return 'FocalLoss'
 
 

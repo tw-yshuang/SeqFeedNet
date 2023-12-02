@@ -204,7 +204,8 @@ class CDNet2014Dataset(Dataset):
         len_frame = len(video.inputPaths_inROI)
 
         if len_frame - start_id <= self.CFG.frame_groups * self.GAP:
-            return sorted(random.sample(range(start_id - self.CFG.frame_groups * self.GAP - 1, len_frame), k=self.CFG.frame_groups))
+            start_id -= self.CFG.frame_groups * self.GAP
+            return sorted(random.sample(range(start_id if start_id > 0 else 0, len_frame), k=self.CFG.frame_groups))
 
         frame_ids: List[int] = []
         frame_id = start_id

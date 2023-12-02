@@ -24,7 +24,7 @@ class StandardNorm(nn.Module):
 
 class SMNet2D(nn.Module):
     def __init__(self, se_model: nn.Module, me_model: nn.Module, useStandardNorm4Features: bool = True, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
+        super(SMNet2D, self).__init__(*args, **kwargs)
 
         self.se_model = se_model
         self.me_model = me_model
