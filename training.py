@@ -118,7 +118,7 @@ class DL_Model:
 
     def training(
         self,
-        num_epoch: int,
+        num_epochs: int,
         loader: DataLoader,
         val_loader: DataLoader = None,
         test_set: CDNet2014Dataset = None,
@@ -138,10 +138,10 @@ class DL_Model:
         writer = SummaryWriter(summary_path)
         for data, name in zip([train_loader, val_loader, test_set], ['Train', 'Val', 'Test']):
             if data is not None:
-                self.summaries.append(SummaryRecord(writer, summary_path, num_epoch, mode=name))
+                self.summaries.append(SummaryRecord(writer, summary_path, num_epochs, mode=name))
 
         isStop = False
-        for self.epoch in range(num_epoch):
+        for self.epoch in range(num_epochs):
             BasicRecord.row_id = self.epoch
             CDNet2014Dataset.next_frame_gap(self.epoch)
             measure_table = self.create_measure_table()
@@ -177,7 +177,7 @@ class DL_Model:
 
             # * Save Stage
             isCheckpoint = self.epoch % checkpoint == 0
-            isStop = early_stop == (self.epoch - self.best_epoch) or num_epoch == (self.epoch + 1)
+            isStop = early_stop == (self.epoch - self.best_epoch) or num_epochs == (self.epoch + 1)
 
             save_path_heads: List[str] = []
             save_path = f'loss-{self.summaries[-1].overall.last_scores[-1]:.3e}_F1-{self.summaries[-1].overall.last_scores[3]:.3f}'
@@ -265,13 +265,24 @@ class DL_Model:
 @click.command(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=120))
 @click.option('-se', '--se_network', default='UNetVgg16', help="Sequence Extract Network")
 @click.option('-me', '--me_network', default='UNetVgg16', help="Mask Extract Network")
-@click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help="Please check utils/evaluate/losses.py to find others")
+@click.option('-use-std', '--use-standard-normal', default=False, is_flag=True, help="Use standard normalization for se_model output")
+@click.option('-loss', '--loss_func', default='FocalLoss4CDNet2014', help="Please check utils/evaluate/losses.py to find others")
 @click.option('-opt', '--optimizer', default='Adam', help="Optimizer that provide by Pytorch")
 @click.option('-lr', '--learning_rate', default=1e-4, help="Learning Rate for optimizer")
-@click.option('-set', '--set_number', default=1, help='Training and test videos will be selected based on the set number')
-@click.option('--device', default=0, help='CUDA ID, if system can not find Nvidia GPU, it will use CPU')
-@click.option('-use-opt', '--use-options', default=False, is_flag=True, help="use extra options.")
-@click.option('-ls', '--list-schedule', default=False, is_flag=True, help="list schedule that already booking.")
+@click.option('-epochs', '--num_epochs', default=200, help="Number of epochs")
+@click.option('-workers', '--num_workers', default=1, help="Number of workers for data processing")
+@click.option('-cv', '--cv_set_number', default=1, help="Cross validation set number for training and test videos will be selected")
+@click.option('-imghw', '--img_sizeHW', default='224-224', help="Image size for training")
+@click.option('-drate', '--data_split_rate', default=1.0, help="Split data to train_set & val_set")
+@click.option(
+    '-use-t2val',
+    '--use_test_as_val',
+    default=False,
+    is_flag=True,
+    help="Use test_data as validation data, use this flag will set '--data_split_rate=1.0'",
+)
+@click.option('--device', default=0, help="CUDA ID, if system can not find Nvidia GPU, it will use CPU")
+@click.option('--do_testing', default=False, is_flag=True, help="Do testing evaluation is a time-consuming process, suggest not do it")
 def cli():
     ...
 
@@ -285,7 +296,7 @@ if __name__ == '__main__':
     from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose
     from submodules.UsefulFileTools.FileOperator import check2create_dir
 
-    DEVICE = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
+    DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     random.seed(42)
     torch.manual_seed(42)
     if torch.cuda.is_available():
@@ -297,7 +308,7 @@ if __name__ == '__main__':
     CV_SET = 2
     DATA_SPLIT_RATE = 1.0
 
-    NUM_EPOCH = 200
+    NUM_EPOCHS = 200
     EARLY_STOP = 20
     CHECKPOINT = 10
     DO_TESTING = False
@@ -336,7 +347,7 @@ if __name__ == '__main__':
 
     #! ========== Datasets ==========
     dataset_cfg = DatasetConfig()
-    dataset_cfg.num_epoch = NUM_EPOCH
+    dataset_cfg.num_epochs = NUM_EPOCHS
 
     train_loader, val_loader, test_set = get_data_SetAndLoader(
         dataset_cfg=dataset_cfg,
@@ -365,7 +376,21 @@ if __name__ == '__main__':
     check2create_dir(saveDir)
 
     #! ========== Train Process ==========
-    model_process = DL_Model(sm2d_net, optimizer, train_iter_compose, test_iter_compose, device=DEVICE, loss_func=loss_func)
+    model_process = DL_Model(
+        sm2d_net,
+        optimizer,
+        train_iter_compose,
+        test_iter_compose,
+        device=DEVICE,
+        loss_func=loss_func,
+        eval_measure=EvalMeasure(0.5, Loss(reduction='none')),
+    )
     model_process.training(
-        NUM_EPOCH, train_loader, val_loader, test_set if DO_TESTING else None, Path(saveDir), EARLY_STOP, CHECKPOINT
+        NUM_EPOCHS,
+        train_loader,
+        val_loader,
+        test_set if DO_TESTING else None,
+        Path(saveDir),
+        EARLY_STOP,
+        CHECKPOINT,
     )
