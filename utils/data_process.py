@@ -146,7 +146,7 @@ class CDNet2014Dataset(Dataset):
 
             CDNet2014Dataset.CFG = cfg
             CDNet2014Dataset.GAP = self.CFG.gap_range[0]
-            CDNet2014Dataset.GAP_ARR = np.linspace(*self.CFG.gap_range, self.CFG.num_epoch, dtype=np.int16)
+            CDNet2014Dataset.GAP_ARR = np.linspace(*self.CFG.gap_range, self.CFG.num_epochs, dtype=np.int16)
             self.__collect_training_data()
         else:
             assert isinstance(transforms_cpu, transforms.Compose), error_msg.format('transforms_cpu', transforms.Compose, 'testing')
