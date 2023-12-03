@@ -237,32 +237,22 @@ class DL_Model:
                 frames, labels, features = transforms(frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
-            # losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
             for step in range(frames.shape[1]):
                 frame, label = frames[:, step], labels[:, step]
 
-                # features = features.detach()  # create a new tensor to detach previous computational graph
+                features = features.detach()  # create a new tensor to detach previous computational graph
                 pred, frame, features = self.model(frame, features, bg_only_imgs)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
-                # losses[step] = loss
-
-                # if isTrain:
-                #     loss.backward()
-                #     self.optimizer.step()
-                #     self.optimizer.zero_grad()
+                if isTrain:
+                    loss.backward()
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
 
                 with torch.no_grad():
                     bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.batchLevel_matrix[-2] += loss.item()  # pixelLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
-
-            if isTrain:
-                # losses.sum().backward()
-                loss.backward()
-                # losses.backward()
-                self.optimizer.step()
-                self.optimizer.zero_grad()
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
         pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
