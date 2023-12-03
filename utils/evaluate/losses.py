@@ -27,10 +27,16 @@ class CDNet2014Convert(nn.Module):
         masks = torch.where(inputs == self.nonvalid, 0, 1).type(torch.bool)
 
         match self.reduction:
+            case 'rated':
+                loss_ls = []
+                for target, input, mask in zip(targets, inputs, masks):
+                    loss_ls.append(self.loss_func(target, input, mask))
+                    losses = torch.vstack(loss_ls).mean()
             case 'none':
-                losses = torch.zeros((inputs.shape[0], 1), dtype=torch.float32).to(inputs.device)
-                for loss, target, input, mask in zip(losses, targets, inputs, masks):
-                    loss[:] = self.loss_func(target, input, mask)
+                loss_ls = []
+                for target, input, mask in zip(targets, inputs, masks):
+                    loss_ls.append(self.loss_func(target, input, mask))
+                    losses = torch.vstack(loss_ls)
             case 'sum':
                 losses = self.loss_func(targets, inputs, masks).sum()
             case 'mean':
@@ -139,6 +145,67 @@ class FocalLoss4CDNet2014(CDNet2014Convert):
     @staticmethod
     def __repr__():
         return 'FocalLoss'
+
+
+class FocalLossRated4CDNet2014(CDNet2014Convert):
+    def __init__(
+        self,
+        alpha: float = 0.25,
+        gamma: float = 2,
+        useSigmoid=False,
+        nonvalid: int = -1,
+        reduction: str = 'mean',
+        *args,
+        **kwargs,
+    ) -> None:
+        """
+        Loss used in RetinaNet for dense detection: https://arxiv.org/abs/1708.02002.
+
+        Args:
+            alpha (float): Weighting factor in range (0,1) to balance
+                    positive vs negative examples or -1 for ignore. Default: ``0.25``.
+            gamma (float): Exponent of the modulating factor (1 - p_t) to
+                    balance easy vs hard examples. Default: ``2``.
+            useSigmoid (bool, optional):  use the sigmoid function as the first. In this paper, we plan to generate a mask that already has the sigmoid() at the end of the model. Default: ``False``
+            reduction (string): ``'none'`` | ``'mean'`` | ``'sum'``
+                    ``'none'``: No reduction will be applied to the output.
+                    ``'mean'``: The output will be averaged.
+                    ``'sum'``: The output will be summed. Default: ``'none'``.
+        """
+        super(FocalLossRated4CDNet2014, self).__init__(nonvalid, reduction, *args, **kwargs)
+        self.alpha = alpha
+        self.gamma = gamma
+        self.operator = nn.Sigmoid() if useSigmoid else nn.Identity()
+        self.loss_func = self.focal_loss_with_mask_rated
+
+    def focal_loss_with_mask_rated(self, target: torch.Tensor, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            inputs (Tensor): A float tensor of arbitrary shape.
+                    The predictions for each example.
+            targets (Tensor): A float tensor with the same shape as inputs. Stores the binary
+                    classification label for each element in inputs
+                    (0 for the negative class, 1 for the positive class, and -1 for unknown part).
+            mask (Tensor): A bool tensor with the same shape as inputs. For extracting inputs and targets without unknown part.
+        """
+        input_val = torch.masked_select(target, mask)
+        target_val = torch.masked_select(input, mask)
+
+        p: torch.Tensor = self.operator(input_val)
+
+        ce_loss = F.binary_cross_entropy_with_logits(input_val, target_val, reduction="none")
+        p_t = p * target_val + (1 - p) * (1 - target_val)
+        loss = ce_loss * ((1 - p_t) ** self.gamma)
+
+        if self.alpha >= 0:
+            alpha_t = self.alpha * target_val + (1 - self.alpha) * (1 - target_val)
+            loss = alpha_t * loss
+
+        return loss
+
+    @staticmethod
+    def __repr__():
+        return 'FocalLossRated'
 
 
 # code from https://github.com/ozantezcan/BSUV-Net-2.0/blob/69dac8b9a982a136bd1a59f4fb039983e6430c13/utils/losses.py#L49

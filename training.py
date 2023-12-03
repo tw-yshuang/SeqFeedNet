@@ -13,7 +13,7 @@ from torch import optim
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
-from models.unet import UNetVgg16
+from models.unet import UNetVgg16 as BackBone
 from models.SEMwithMEM import SMNet2D as Model
 from utils.data_process import CDNet2014Dataset
 from utils.transforms import IterativeCustomCompose
@@ -35,7 +35,13 @@ PROJECT_DIR = str(Path(__file__).resolve())
 
 
 def get_device(id: int = 0):
-    return torch.device(f'cuda:{id}' if torch.cuda.is_available() else 'cpu')
+    device = 'cpu'
+    if torch.cuda.is_available():
+        device = f'cuda:{id}'
+    else:
+        print('CUDA device not found, use CPU!!')
+
+    return torch.device(device)
 
 
 class DL_Model:
@@ -231,15 +237,15 @@ class DL_Model:
                 frames, labels, features = transforms(frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
-            losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
+            # losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
             for step in range(frames.shape[1]):
                 frame, label = frames[:, step], labels[:, step]
 
-                features = features.detach()  # create a new tensor to detach previous computational graph
+                # features = features.detach()  # create a new tensor to detach previous computational graph
                 pred, frame, features = self.model(frame, features, bg_only_imgs)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
-                losses[step] = loss
+                # losses[step] = loss
 
                 # if isTrain:
                 #     loss.backward()
@@ -248,11 +254,12 @@ class DL_Model:
 
                 with torch.no_grad():
                     bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
-                    videos_accumulator.pixelLevel_matrix[-2] += loss.item()  # pixelLevel loss is different with others
+                    videos_accumulator.batchLevel_matrix[-2] += loss.item()  # pixelLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
             if isTrain:
-                losses.mean().backward()
+                # losses.sum().backward()
+                loss.backward()
                 # losses.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
@@ -271,17 +278,43 @@ class DL_Model:
             torch.save(self.optimizer.state_dict(), f'{path}_Optimizer.pickle')
 
 
+class Parser:
+    SE_Net: nn.Module | BackBone
+    ME_Net: nn.Module | BackBone
+    SM_Net: nn.Module | Model
+    DEVICE: int
+
+    LOSS: nn.Module | Loss
+    OPTIMIZER: torch.optim
+    LEARNING_RATE: float
+
+    BATCH_SIZE: int
+    NUM_EPOCHS: int
+    NUM_WORKERS: int
+    CV_SET: int
+    SIZE_HW: Tuple[int]
+    DATA_SPLIT_RATE: float
+
+    useStandardNorm4Features: bool
+    useTestAsVal: bool
+    DO_TESTING: bool
+
+    OUT: str
+
+
 @click.command(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=120))
 @click.option('-se', '--se_network', default='UNetVgg16', help="Sequence Extract Network")
 @click.option('-me', '--me_network', default='UNetVgg16', help="Mask Extract Network")
+@click.option('-sm', '--sm_network', default='SMNet2D', help="Sequence to mask Network")
 @click.option('-use-std', '--use-standard-normal', default=False, is_flag=True, help="Use standard normalization for se_model output")
 @click.option('-loss', '--loss_func', default='FocalLoss4CDNet2014', help="Please check utils/evaluate/losses.py to find others")
 @click.option('-opt', '--optimizer', default='Adam', help="Optimizer that provide by Pytorch")
 @click.option('-lr', '--learning_rate', default=1e-4, help="Learning Rate for optimizer")
 @click.option('-epochs', '--num_epochs', default=200, help="Number of epochs")
+@click.option('-bs', '--batch_size', default=8, help="Number of batch_size")
 @click.option('-workers', '--num_workers', default=1, help="Number of workers for data processing")
 @click.option('-cv', '--cv_set_number', default=1, help="Cross validation set number for training and test videos will be selected")
-@click.option('-imghw', '--img_sizeHW', default='224-224', help="Image size for training")
+@click.option('-imghw', '--img_sizeHW', 'img_sizeHW', default='224-224', help="Image size for training")
 @click.option('-drate', '--data_split_rate', default=1.0, help="Split data to train_set & val_set")
 @click.option(
     '-use-t2val',
@@ -292,12 +325,68 @@ class DL_Model:
 )
 @click.option('--device', default=0, help="CUDA ID, if system can not find Nvidia GPU, it will use CPU")
 @click.option('--do_testing', default=False, is_flag=True, help="Do testing evaluation is a time-consuming process, suggest not do it")
-def cli():
-    ...
+@click.option('-out', '--output', default='', help="Model output directory")
+def cli(
+    se_network: str,
+    me_network: str,
+    sm_network: str,
+    use_standard_normal: bool,
+    loss_func: str,
+    optimizer: str,
+    learning_rate: float,
+    num_epochs: int,
+    batch_size: int,
+    num_workers: int,
+    cv_set_number: int,
+    img_sizeHW: str,
+    data_split_rate: float,
+    use_test_as_val: bool,
+    device: int,
+    do_testing: bool,
+    output: str,
+):
+    parser = Parser()
+    module_locate = sys.modules[__name__]
+
+    parser.DEVICE = get_device(device)
+    parser.OUT = f'_{output}' if output != '' else ''
+    #! ========== Network ==========
+    parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
+    parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
+    parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
+    parser.useStandardNorm4Features = use_standard_normal
+
+    #! ========== Hyperparameter ==========
+    parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
+    parser.OPTIMIZER: optim = getattr(optim, optimizer)
+    parser.LEARNING_RATE = learning_rate
+    parser.NUM_EPOCHS = num_epochs
+    parser.BATCH_SIZE = batch_size
+
+    #! ========== Dataset ==========
+    parser.NUM_WORKERS = num_workers
+    parser.CV_SET = cv_set_number
+    parser.DO_TESTING = do_testing
+    parser.useTestAsVal = use_test_as_val
+    parser.SIZE_HW = tuple(map(int, img_sizeHW.split('-')))
+
+    if use_test_as_val is True:
+        parser.DATA_SPLIT_RATE = 1.0
+    else:
+        parser.DATA_SPLIT_RATE = data_split_rate
+
+    return parser
+
+
+def get_parser():
+    parser: Parser = cli(standalone_mode=False)
+    if '-h' in sys.argv or '--help' in sys.argv:
+        exit()
+    return parser
 
 
 if __name__ == '__main__':
-    import time
+    import sys, time
 
     from torch import optim
     from torchvision import transforms
@@ -305,32 +394,35 @@ if __name__ == '__main__':
     from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose
     from submodules.UsefulFileTools.FileOperator import check2create_dir
 
-    DEVICE = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    from models.SEMwithMEM import SMNet2D as Model
+    from utils.data_process import CDNet2014Dataset
+    from utils.transforms import IterativeCustomCompose
+    from utils.evaluate.losses import FocalLoss4CDNet2014 as Loss
+
+    from models.unet import *
+    from models.SEMwithMEM import *
+    from utils.evaluate.losses import *
+
+    sys.argv = 'training.py --device 2 -epochs 2 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test'.split()
+
+    parser = get_parser()
+
     random.seed(42)
     torch.manual_seed(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
     #! ========== Hyperparameter ==========
-    # * Datasets
-    BATCH_SIZE = 6
-    NUM_WORKERS = 8
-    CV_SET = 2
-    DATA_SPLIT_RATE = 1.0
-
-    NUM_EPOCHS = 200
     EARLY_STOP = 20
     CHECKPOINT = 10
-    DO_TESTING = False
-    useTestAsVal = True
 
     #! ========== Augmentation ==========
-    sizeHW = (224, 224)
+
     train_trans_cpu = CustomCompose(
         [
             # transforms.ToTensor(), # already converted in the __getitem__()
             transforms.RandomChoice(
                 [
-                    RandomCrop(crop_size=sizeHW, p=1.0),
+                    RandomCrop(crop_size=parser.SIZE_HW, p=1.0),
                     # RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
                 ]
             ),
@@ -341,7 +433,7 @@ if __name__ == '__main__':
     test_trans_cpu = transforms.Compose(
         [
             # transforms.ToTensor(), # already converted in the __getitem__()
-            transforms.Resize(sizeHW, antialias=True),
+            transforms.Resize(parser.SIZE_HW, antialias=True),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
@@ -351,37 +443,37 @@ if __name__ == '__main__':
         # transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
     ]
 
-    train_iter_compose = IterativeCustomCompose([*argumentation_order_ls], target_size=sizeHW)
-    test_iter_compose = IterativeCustomCompose([], target_size=sizeHW)
+    train_iter_compose = IterativeCustomCompose([*argumentation_order_ls], target_size=parser.SIZE_HW)
+    test_iter_compose = IterativeCustomCompose([], target_size=parser.SIZE_HW)
 
     #! ========== Datasets ==========
     dataset_cfg = DatasetConfig()
-    dataset_cfg.num_epochs = NUM_EPOCHS
+    dataset_cfg.num_epochs = parser.NUM_EPOCHS
 
     train_loader, val_loader, test_set = get_data_SetAndLoader(
         dataset_cfg=dataset_cfg,
-        cv_set=CV_SET,
-        dataset_rate=DATA_SPLIT_RATE,
-        batch_size=BATCH_SIZE,
-        num_workers=NUM_WORKERS,
+        cv_set=parser.CV_SET,
+        dataset_rate=parser.DATA_SPLIT_RATE,
+        batch_size=parser.BATCH_SIZE,
+        num_workers=parser.NUM_WORKERS,
         pin_memory=True,
         train_transforms_cpu=train_trans_cpu,
         test_transforms_cpu=test_trans_cpu,
         label_isShadowFG=False,
-        useTestAsVal=useTestAsVal,
+        useTestAsVal=parser.useTestAsVal,
     )
 
     #! ========== Network ==========
 
-    se_model = UNetVgg16(9, 6)
-    me_model = UNetVgg16(9, 1)
-    sm2d_net = Model(se_model, me_model, useStandardNorm4Features=False).to(DEVICE)
-    optimizer = optim.Adam(sm2d_net.parameters(), lr=1e-4)
-    loss_func = Loss()
+    se_model: nn.Module = parser.SE_Net(9, 6)
+    me_model: nn.Module = parser.ME_Net(9, 1)
+    sm2d_net: nn.Module = parser.SM_Net(se_model, me_model, useStandardNorm4Features=parser.useStandardNorm4Features).to(parser.DEVICE)
+    optimizer: optim = parser.OPTIMIZER(sm2d_net.parameters(), lr=parser.LEARNING_RATE)
+    loss_func: nn.Module = parser.LOSS(reduction='mean')
 
     model_name = f'{sm2d_net.__class__.__name__}({se_model.__class__.__name__}-{me_model.__class__.__name__})'
     optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}'
-    saveDir = f'out/{time.strftime("%m%d-%H%M")}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{BATCH_SIZE}_Set-{CV_SET}'
+    saveDir = f'out/{time.strftime("%m%d-%H%M")}{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
     check2create_dir(saveDir)
 
     #! ========== Train Process ==========
@@ -390,15 +482,15 @@ if __name__ == '__main__':
         optimizer,
         train_iter_compose,
         test_iter_compose,
-        device=DEVICE,
+        device=parser.DEVICE,
         loss_func=loss_func,
         eval_measure=EvalMeasure(0.5, Loss(reduction='none')),
     )
     model_process.training(
-        NUM_EPOCHS,
+        parser.NUM_EPOCHS,
         train_loader,
         val_loader,
-        test_set if DO_TESTING else None,
+        test_set if parser.DO_TESTING else None,
         Path(saveDir),
         EARLY_STOP,
         CHECKPOINT,
