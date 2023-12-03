@@ -34,15 +34,19 @@
     },
     "cSpell.words": [
         "BSUV",
+        "drate",
         "dsize",
         "groundtruth",
         "hstack",
+        "imghw",
         "Jaccard",
         "keepdim",
         "nparray",
         "Prec",
         "tensorboard",
+        "torchvision",
         "tvtf",
+        "unet",
         "unsqueeze"
     ]
 }
