@@ -1,4 +1,4 @@
-from typing import Dict, Callable
+from typing import Dict, Tuple, Callable
 
 import pandas as pd
 import torch
@@ -66,20 +66,20 @@ class OneEpochVideosAccumulator:
     def __init__(self) -> None:
         self.vid_matrix: dict[int : torch.Tensor] = dict()
         # {id: (tp, fp, tn, fn, loss, accumulative_times)}
-        self.pixelLevel_matrix: torch.Tensor = torch.zeros(6, dtype=torch.float64, device='cpu')
+        self.batchLevel_matrix: torch.Tensor = torch.zeros(6, dtype=torch.float64, device='cpu')
 
     def accumulate(self, result: torch.Tensor) -> None:
         result = result.to('cpu')
         for feature in result:
             # feature: (tp, fp, tn, fn, loss, video_id)
 
-            vid_matrix = self.vid_matrix.setdefault(int(feature[-1]), torch.zeros_like(self.pixelLevel_matrix))
+            vid_matrix = self.vid_matrix.setdefault(int(feature[-1]), torch.zeros_like(self.batchLevel_matrix))
             vid_matrix[:-2] += feature[:-2]
             vid_matrix[-2] += feature[-2]
             vid_matrix[-1] += 1
 
-            self.pixelLevel_matrix[:-2] += vid_matrix[:-2]
-            self.pixelLevel_matrix[-1] += 1
+            self.batchLevel_matrix[:-2] += vid_matrix[:-2]
+            self.batchLevel_matrix[-1] += 1
 
 
 class BasicRecord:
@@ -111,7 +111,7 @@ class BasicRecord:
     def save(self, saveDir: str, start_row: int = 0, end_row: int = None):
         self.convert2df(self.score_records, start_row, end_row).to_csv(f'{saveDir}/{self.task_name}.csv')
 
-    def record(self, *args: torch.Tensor):
+    def record(self, *args: Tuple[torch.Tensor]):
         self.score_records[self.row_id, :] = torch.tensor(args, dtype=torch.float32)
 
     @property
@@ -141,7 +141,7 @@ class SummaryRecord:
         self.video_dict: Dict[int, BasicRecord] = {}
 
         self.overall = BasicRecord('Overall', num_epochs)  # internal manipulate, auto calculate
-        self.pixelLevel = BasicRecord('PixelLevel', num_epochs)  # external manipulate
+        self.batchLevel = BasicRecord('BatchLevel', num_epochs)  # external manipulate
 
     def records(self, videosAccumulator: OneEpochVideosAccumulator):
         vid: int
@@ -155,17 +155,16 @@ class SummaryRecord:
             cid = vid // 10
             cid_freq[cid] = cid_freq.setdefault(cid, 0) + 1
 
-            self.cate_dict.setdefault(cid, BasicRecord(ID2CAT[cid], self.num_epochs))
-            cate_record = self.cate_dict[cid]
+            cate_record = self.cate_dict.setdefault(cid, BasicRecord(ID2CAT[cid], self.num_epochs))
             cate_record.record(*((cate_record.last_scores * (cid_freq[cid] - 1) + video_record.last_scores) / cid_freq[cid]))
             self.write2tensorboard(task_name=str(ID2CAT[cid]), scores=self.cate_dict[cid].last_scores)
 
         self.overall.record(*torch.stack([cate_record.last_scores for cate_record in self.cate_dict.values()]).mean(0))
         self.write2tensorboard(task_name=self.overall.task_name, scores=self.overall.last_scores)
 
-        pixelLevel_loss = videosAccumulator.pixelLevel_matrix[-2] / (videosAccumulator.pixelLevel_matrix[-1] + 0.000001)
-        self.pixelLevel.record(*self.acc_func(*videosAccumulator.pixelLevel_matrix[:-2]), pixelLevel_loss)
-        self.write2tensorboard(task_name=self.pixelLevel.task_name, scores=self.pixelLevel.last_scores)
+        batchLevel_loss = videosAccumulator.batchLevel_matrix[-2] / videosAccumulator.batchLevel_matrix[-1]
+        self.batchLevel.record(*self.acc_func(*videosAccumulator.batchLevel_matrix[:-2]), batchLevel_loss)
+        self.write2tensorboard(task_name=self.batchLevel.task_name, scores=self.batchLevel.last_scores)
 
     def write2tensorboard(self, task_name: str, scores: torch.Tensor):
         for name, score in zip(ORDER_NAMES, scores):
@@ -175,7 +174,7 @@ class SummaryRecord:
         main_saveDir = f'{self.saveDir}/{self.mode}'
         check2create_dir(main_saveDir)
         self.overall.save(main_saveDir)
-        self.pixelLevel.save(main_saveDir)
+        self.batchLevel.save(main_saveDir)
 
         for cate_record in self.cate_dict.values():
             cate_record.save(main_saveDir)
