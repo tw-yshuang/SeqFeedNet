@@ -23,10 +23,10 @@ from utils.evaluate.eval_utils import (
     ACC_NAMES,
     LOSS_NAMES,
     ORDER_NAMES,
-    SummaryRecord,
-    BasicRecord,
-    OneEpochVideosAccumulator,
     EvalMeasure,
+    BasicRecord,
+    SummaryRecord,
+    OneEpochVideosAccumulator,
 )
 from submodules.UsefulFileTools.WordOperator import str_format
 from submodules.UsefulFileTools.PickleOperator import load_pickle
@@ -104,8 +104,8 @@ class DL_Model:
 
                     bg_only_img, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
-                    videos_accumulator.pixelLevel_matrix[-2] += loss.to('cpu')  # pixelLevel loss is different with others
-                    videos_accumulator.pixelLevel_matrix[-1] += 1  # accumulative_times += 1
+                    videos_accumulator.batchLevel_matrix[-2] += loss.to('cpu')  # batchLevel loss is different with others
+                    videos_accumulator.batchLevel_matrix[-1] += 1  # accumulative_times += 1
             self.summaries[-1].records(videos_accumulator)
 
     def __validating(self, loader: DataLoader):
@@ -152,14 +152,14 @@ class DL_Model:
             self.proposed_training_method(loader, videos_accumulator, self.train_transforms, isTrain=True)
             self.summaries[0].records(videos_accumulator)
 
-            measure_table.add_row('Train', *[f'{l:.3e}' for l in self.summaries[0].pixelLevel.last_scores])
+            measure_table.add_row('Train', *[f'{l:.3e}' for l in self.summaries[0].batchLevel.last_scores])
 
             for i, (data_info, tasking, name) in enumerate(zip(data_infos, [self.__validating, self.__testing], ['Val', 'Test'])):
                 if data_info is None:
                     continue
 
                 tasking(data_info)
-                measure_table.add_row(name, *[f'{l:.3e}' for l in self.summaries[-1].pixelLevel.last_scores])
+                measure_table.add_row(name, *[f'{l:.3e}' for l in self.summaries[-1].batchLevel.last_scores])
 
                 if i != checker_active_idx:
                     continue
