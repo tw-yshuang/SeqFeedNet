@@ -292,83 +292,96 @@ class Parser:
     OUT: str
 
 
-@click.command(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=120))
-@click.option('-se', '--se_network', default='UNetVgg16', help="Sequence Extract Network")
-@click.option('-me', '--me_network', default='UNetVgg16', help="Mask Extract Network")
-@click.option('-sm', '--sm_network', default='SMNet2D', help="Sequence to mask Network")
-@click.option('-use-std', '--use-standard-normal', default=False, is_flag=True, help="Use standard normalization for se_model output")
-@click.option('-loss', '--loss_func', default='FocalLoss4CDNet2014', help="Please check utils/evaluate/losses.py to find others")
-@click.option('-opt', '--optimizer', default='Adam', help="Optimizer that provide by Pytorch")
-@click.option('-lr', '--learning_rate', default=1e-4, help="Learning Rate for optimizer")
-@click.option('-epochs', '--num_epochs', default=200, help="Number of epochs")
-@click.option('-bs', '--batch_size', default=8, help="Number of batch_size")
-@click.option('-workers', '--num_workers', default=1, help="Number of workers for data processing")
-@click.option('-cv', '--cv_set_number', default=1, help="Cross validation set number for training and test videos will be selected")
-@click.option('-imghw', '--img_sizeHW', 'img_sizeHW', default='224-224', help="Image size for training")
-@click.option('-drate', '--data_split_rate', default=1.0, help="Split data to train_set & val_set")
-@click.option(
-    '-use-t2val',
-    '--use_test_as_val',
-    default=False,
-    is_flag=True,
-    help="Use test_data as validation data, use this flag will set '--data_split_rate=1.0'",
-)
-@click.option('--device', default=0, help="CUDA ID, if system can not find Nvidia GPU, it will use CPU")
-@click.option('--do_testing', default=False, is_flag=True, help="Do testing evaluation is a time-consuming process, suggest not do it")
-@click.option('-out', '--output', default='', help="Model output directory")
-def cli(
-    se_network: str,
-    me_network: str,
-    sm_network: str,
-    use_standard_normal: bool,
-    loss_func: str,
-    optimizer: str,
-    learning_rate: float,
-    num_epochs: int,
-    batch_size: int,
-    num_workers: int,
-    cv_set_number: int,
-    img_sizeHW: str,
-    data_split_rate: float,
-    use_test_as_val: bool,
-    device: int,
-    do_testing: bool,
-    output: str,
-):
-    parser = Parser()
-    module_locate = sys.modules[__name__]
-
-    parser.DEVICE = get_device(device)
-    parser.OUT = f'_{output}' if output != '' else ''
-    #! ========== Network ==========
-    parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
-    parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
-    parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
-    parser.useStandardNorm4Features = use_standard_normal
-
-    #! ========== Hyperparameter ==========
-    parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
-    parser.OPTIMIZER: optim = getattr(optim, optimizer)
-    parser.LEARNING_RATE = learning_rate
-    parser.NUM_EPOCHS = num_epochs
-    parser.BATCH_SIZE = batch_size
-
-    #! ========== Dataset ==========
-    parser.NUM_WORKERS = num_workers
-    parser.CV_SET = cv_set_number
-    parser.DO_TESTING = do_testing
-    parser.useTestAsVal = use_test_as_val
-    parser.SIZE_HW = tuple(map(int, img_sizeHW.split('-')))
-
-    if use_test_as_val is True:
-        parser.DATA_SPLIT_RATE = 1.0
-    else:
-        parser.DATA_SPLIT_RATE = data_split_rate
-
-    return parser
-
-
 def get_parser():
+    help_doc = {
+        'se_network': "Sequence Extract Network",
+        'me_network': "Mask Extract Network",
+        'sm_network': "Sequence to mask Network",
+        'use-standard-normal': "Use standard normalization for se_model output",
+        'loss_func': "Please check utils/evaluate/losses.py to find others",
+        'optimizer': "Optimizer that provide by Pytorch",
+        'learning_rate': "Learning Rate for optimizer",
+        'num_epochs': "Number of epochs",
+        'batch_size': "Number of batch_size",
+        'num_workers': "Number of workers for data processing",
+        'cv_set_number': "Cross validation set number for training and test videos will be selected",
+        'img_sizeHW': "Image size for training",
+        'data_split_rate': "Split data to train_set & val_set",
+        'use_test_as_val': "Use test_data as validation data, use this flag will set '--data_split_rate=1.0'",
+        'device': "CUDA ID, if system can not find Nvidia GPU, it will use CPU",
+        'do_testing': "Do testing evaluation is a time-consuming process, suggest not do it",
+        'output': "Model output directory",
+    }
+
+    @click.command(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=120))
+    @click.option('-se', '--se_network', default='UNetVgg16', help=help_doc['se_network'])
+    @click.option('-me', '--me_network', default='UNetVgg16', help=help_doc['me_network'])
+    @click.option('-sm', '--sm_network', default='SMNet2D', help=help_doc['sm_network'])
+    @click.option('-use-std', '--use-standard-normal', default=False, is_flag=True, help=help_doc['use-standard-normal'])
+    @click.option('-loss', '--loss_func', default='FocalLoss4CDNet2014', help=help_doc['loss_func'])
+    @click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
+    @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
+    @click.option('-epochs', '--num_epochs', default=200, help=help_doc['num_epochs'])
+    @click.option('-bs', '--batch_size', default=8, help=help_doc['batch_size'])
+    @click.option('-workers', '--num_workers', default=1, help=help_doc['num_workers'])
+    @click.option('-cv', '--cv_set_number', default=1, help=help_doc['cv_set_number'])
+    @click.option('-imghw', '--img_sizeHW', 'img_sizeHW', default='224-224', help=help_doc['img_sizeHW'])
+    @click.option('-drate', '--data_split_rate', default=1.0, help=help_doc['data_split_rate'])
+    @click.option('-use-t2val', '--use_test_as_val', default=False, is_flag=True, help=help_doc['use_test_as_val'])
+    @click.option('--device', default=0, help=help_doc['device'])
+    @click.option('--do_testing', default=False, is_flag=True, help=help_doc['do_testing'])
+    @click.option('-out', '--output', default='', help=help_doc['output'])
+    def cli(
+        se_network: str,
+        me_network: str,
+        sm_network: str,
+        use_standard_normal: bool,
+        loss_func: str,
+        optimizer: str,
+        learning_rate: float,
+        num_epochs: int,
+        batch_size: int,
+        num_workers: int,
+        cv_set_number: int,
+        img_sizeHW: str,
+        data_split_rate: float,
+        use_test_as_val: bool,
+        device: int,
+        do_testing: bool,
+        output: str,
+    ):
+        parser = Parser()
+        module_locate = sys.modules[__name__]
+
+        parser.DEVICE = get_device(device)
+        parser.OUT = f'_{output}' if output != '' else ''
+        #! ========== Network ==========
+        parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
+        parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
+        parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
+        parser.useStandardNorm4Features = use_standard_normal
+
+        #! ========== Hyperparameter ==========
+        parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
+        parser.OPTIMIZER: optim = getattr(optim, optimizer)
+        parser.LEARNING_RATE = learning_rate
+        parser.NUM_EPOCHS = num_epochs
+        parser.BATCH_SIZE = batch_size
+
+        #! ========== Dataset ==========
+        parser.NUM_WORKERS = num_workers
+        parser.CV_SET = cv_set_number
+        parser.DO_TESTING = do_testing
+        parser.useTestAsVal = use_test_as_val
+        parser.SIZE_HW = tuple(map(int, img_sizeHW.split('-')))
+
+        if use_test_as_val is True:
+            parser.DATA_SPLIT_RATE = 1.0
+        else:
+            parser.DATA_SPLIT_RATE = data_split_rate
+
+        return parser
+
     parser: Parser = cli(standalone_mode=False)
     if '-h' in sys.argv or '--help' in sys.argv:
         exit()
