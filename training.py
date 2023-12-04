@@ -257,8 +257,9 @@ class DL_Model:
                     self.optimizer.zero_grad()
 
                 with torch.no_grad():
-                    bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
-                    videos_accumulator.batchLevel_matrix[-2] += loss.item()  # pixelLevel loss is different with others
+                    bg_only_imgs, _ = self.get_bgOnly_and_mask(frame, label)
+                    _, pred_mask = self.get_bgOnly_and_mask(frame, pred)
+                    videos_accumulator.batchLevel_matrix[-2] += loss.item()  # batchLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
@@ -449,7 +450,7 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
     #! ========== Hyperparameter ==========
-    EARLY_STOP = 20
+    EARLY_STOP = 30
     CHECKPOINT = 10
 
     #! ========== Augmentation ==========
