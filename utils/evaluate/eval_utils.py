@@ -125,15 +125,15 @@ class BasicRecord:
 class SummaryRecord:
     def __init__(
         self,
-        writer: SummaryWriter,
         saveDir: str,
         num_epochs: int,
-        mode: str = 'Train',
+        writer: SummaryWriter | None = None,
         acc_func: Callable[[int | torch.IntTensor], torch.Tensor] = acc_func,
+        mode: str = 'Train',
     ) -> None:
-        self.writer = writer
         self.saveDir = saveDir
         self.num_epochs = num_epochs
+        self.writer = writer
         self.mode = mode
         self.acc_func = acc_func
 
@@ -167,6 +167,9 @@ class SummaryRecord:
         self.write2tensorboard(task_name=self.batchLevel.task_name, scores=self.batchLevel.last_scores)
 
     def write2tensorboard(self, task_name: str, scores: torch.Tensor):
+        if self.writer is None:
+            return
+
         for name, score in zip(ORDER_NAMES, scores):
             self.writer.add_scalar(f'{self.mode}/{task_name}/{name}', score, BasicRecord.row_id)
 

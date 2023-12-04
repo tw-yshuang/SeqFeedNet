@@ -29,7 +29,6 @@ from utils.evaluate.eval_utils import (
     OneEpochVideosAccumulator,
 )
 from submodules.UsefulFileTools.WordOperator import str_format
-from submodules.UsefulFileTools.PickleOperator import load_pickle
 
 PROJECT_DIR = str(Path(__file__).resolve())
 
@@ -83,7 +82,14 @@ class DL_Model:
 
         return measure_table
 
-    def __testing(self, dataset: CDNet2014Dataset | Dataset):
+    def testing(self, saveDir: str, dataset: CDNet2014Dataset | Dataset):
+        summaryRecord = SummaryRecord(saveDir, 1, None, self.acc_func, mode='Test')
+        self.__testing(dataset, summaryRecord=summaryRecord)
+        summaryRecord.export2csv()
+
+    def __testing(self, dataset: CDNet2014Dataset | Dataset, summaryRecord: SummaryRecord | None = None):
+        if summaryRecord is None:
+            summaryRecord = self.summaries[-1]
         videos_accumulator = OneEpochVideosAccumulator()
 
         self.model.eval()
@@ -112,7 +118,8 @@ class DL_Model:
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
                     videos_accumulator.batchLevel_matrix[-2] += loss.to('cpu')  # batchLevel loss is different with others
                     videos_accumulator.batchLevel_matrix[-1] += 1  # accumulative_times += 1
-            self.summaries[-1].records(videos_accumulator)
+
+            summaryRecord.records(videos_accumulator)
 
     def __validating(self, loader: DataLoader):
         videos_accumulator = OneEpochVideosAccumulator()
@@ -144,7 +151,7 @@ class DL_Model:
         writer = SummaryWriter(summary_path)
         for data, name in zip([train_loader, val_loader, test_set], ['Train', 'Val', 'Test']):
             if data is not None:
-                self.summaries.append(SummaryRecord(writer, summary_path, num_epochs, mode=name))
+                self.summaries.append(SummaryRecord(summary_path, num_epochs, writer, self.acc_func, mode=name))
 
         isStop = False
         for self.epoch in range(num_epochs):
@@ -209,7 +216,7 @@ class DL_Model:
 
                 path: Path = saveDir / f'{path_head}.pt'
                 path.unlink(missing_ok=True)
-                path.symlink_to(epoch_path)
+                path.symlink_to(f'{epoch_path}.pt')
                 print(f"symlink: {str_format(str(path_head), fore='y'):<36} -> {epoch_path}")
 
             if isStop:
@@ -272,10 +279,28 @@ class DL_Model:
     def save(self, model: Model | nn.Module, path: str, isFull: bool = False):
         if isFull:
             torch.save(model, f'{path}.pt')
-            torch.save(self.optimizer, f'{path}_Optimizer.pickle')
+            torch.save(self.optimizer, f'{path}_{self.optimizer.__class__.__name__}.pickle')
         else:
             torch.save(model.state_dict(), f'{path}.pt')
-            torch.save(self.optimizer.state_dict(), f'{path}_Optimizer.pickle')
+            torch.save(self.optimizer.state_dict(), f'{path}_{self.optimizer.__class__.__name__}.pt')
+
+    @staticmethod
+    def load(path: str, model: nn.Module = None, optimizer: optim.Optimizer = None, isFull: bool = False, device: str = 'cpu'):
+        model: nn.Module
+        optimizer: optim.Optimizer
+
+        path = str(Path(path).resolve())
+        optimizer_path = f'{path[:-3]}_{optimizer.__class__.__name__}.pt'
+        if isFull:
+            model = torch.load(path)
+            optimizer = torch.load(optimizer_path)
+        else:
+            model.load_state_dict(torch.load(path, map_location=device))
+
+            if Path(optimizer_path).exists():
+                optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
+
+        return model, optimizer
 
 
 class Parser:
@@ -299,6 +324,7 @@ class Parser:
     useTestAsVal: bool
     DO_TESTING: bool
 
+    PRETRAIN_WEIGHT: str
     OUT: str
 
 
@@ -320,6 +346,7 @@ def get_parser():
         'use_test_as_val': "Use test_data as validation data, use this flag will set '--data_split_rate=1.0'",
         'device': "CUDA ID, if system can not find Nvidia GPU, it will use CPU",
         'do_testing': "Do testing evaluation is a time-consuming process, suggest not do it",
+        'pretrain_weight': "Pretrain weight, model structure must same with the setting",
         'output': "Model output directory",
     }
 
@@ -331,7 +358,7 @@ def get_parser():
     @click.option('-loss', '--loss_func', default='FocalLoss4CDNet2014', help=help_doc['loss_func'])
     @click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
     @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
-    @click.option('-epochs', '--num_epochs', default=200, help=help_doc['num_epochs'])
+    @click.option('-epochs', '--num_epochs', default=0, help=help_doc['num_epochs'])
     @click.option('-bs', '--batch_size', default=8, help=help_doc['batch_size'])
     @click.option('-workers', '--num_workers', default=1, help=help_doc['num_workers'])
     @click.option('-cv', '--cv_set_number', default=1, help=help_doc['cv_set_number'])
@@ -340,6 +367,7 @@ def get_parser():
     @click.option('-use-t2val', '--use_test_as_val', default=False, is_flag=True, help=help_doc['use_test_as_val'])
     @click.option('--device', default=0, help=help_doc['device'])
     @click.option('--do_testing', default=False, is_flag=True, help=help_doc['do_testing'])
+    @click.option('--pretrain_weight', default='', help=help_doc['pretrain_weight'])
     @click.option('-out', '--output', default='', help=help_doc['output'])
     def cli(
         se_network: str,
@@ -358,6 +386,7 @@ def get_parser():
         use_test_as_val: bool,
         device: int,
         do_testing: bool,
+        pretrain_weight: str,
         output: str,
     ):
         parser = Parser()
@@ -370,6 +399,7 @@ def get_parser():
         parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
         parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
         parser.useStandardNorm4Features = use_standard_normal
+        parser.PRETRAIN_WEIGHT = pretrain_weight
 
         #! ========== Hyperparameter ==========
         parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
@@ -416,7 +446,11 @@ if __name__ == '__main__':
     from models.SEMwithMEM import *
     from utils.evaluate.losses import *
 
-    sys.argv = 'training.py --device 2 -epochs 2 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test'.split()
+    # sys.argv = 'training.py --device 2 -epochs 2 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test'.split()
+
+    # sys.argv = "training.py --device 1 -epochs 0 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test -opt SGD --pretrain_weight out/1203-1703_SMNet2D(UNetVgg16-UNetVgg16)_Adam1.0e-04_FocalLoss_BS-9_Set-2_lastBack/bestAcc-F_score.pt".split()
+
+    # sys.argv = "training.py --device 1 -epochs 0 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test -opt SGD --pretrain_weight out/1203-1703_SMNet2D(UNetVgg16-UNetVgg16)_Adam1.0e-04_FocalLoss_BS-9_Set-2_lastBack/bestAcc-F_score.pt --do_testing".split()
 
     parser = get_parser()
 
@@ -429,7 +463,6 @@ if __name__ == '__main__':
     CHECKPOINT = 10
 
     #! ========== Augmentation ==========
-
     train_trans_cpu = CustomCompose(
         [
             # transforms.ToTensor(), # already converted in the __getitem__()
@@ -477,21 +510,26 @@ if __name__ == '__main__':
     )
 
     #! ========== Network ==========
-
     se_model: nn.Module = parser.SE_Net(9, 6)
     me_model: nn.Module = parser.ME_Net(9, 1)
-    sm2d_net: nn.Module = parser.SM_Net(se_model, me_model, useStandardNorm4Features=parser.useStandardNorm4Features).to(parser.DEVICE)
-    optimizer: optim = parser.OPTIMIZER(sm2d_net.parameters(), lr=parser.LEARNING_RATE)
+    sm_net: nn.Module = parser.SM_Net(se_model, me_model, useStandardNorm4Features=parser.useStandardNorm4Features).to(parser.DEVICE)
+    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
 
-    model_name = f'{sm2d_net.__class__.__name__}({se_model.__class__.__name__}-{me_model.__class__.__name__})'
+    #! ========== Load Pretrain ==========
+    if parser.PRETRAIN_WEIGHT != '':
+        sm_net, optimizer = DL_Model.load(parser.PRETRAIN_WEIGHT, sm_net, optimizer, device=parser.DEVICE)
+
+    #! ========= Create saveDir ==========
+    parent_dir = 'out' if parser.PRETRAIN_WEIGHT == '' else parser.PRETRAIN_WEIGHT[: parser.PRETRAIN_WEIGHT.rfind('/')]
+    model_name = f'{sm_net.__class__.__name__}.{se_model.__class__.__name__}-{me_model.__class__.__name__}'
     optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}'
-    saveDir = f'out/{time.strftime("%m%d-%H%M")}{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
+    saveDir = f'{parent_dir}/{time.strftime("%m%d-%H%M")}{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
     check2create_dir(saveDir)
 
-    #! ========== Train Process ==========
+    #! ========== Model Setting ==========
     model_process = DL_Model(
-        sm2d_net,
+        sm_net,
         optimizer,
         train_iter_compose,
         test_iter_compose,
@@ -499,6 +537,14 @@ if __name__ == '__main__':
         loss_func=loss_func,
         eval_measure=EvalMeasure(0.5, Loss(reduction='none')),
     )
+
+    #! ========== Testing Evaluation ==========
+    if parser.NUM_EPOCHS == 0 and parser.DO_TESTING:
+        print(str_format("Testing Evaluate!!", fore='y'))
+        model_process.testing(saveDir, test_set)
+        exit()
+
+    #! ========== Training Process ==========
     model_process.training(
         parser.NUM_EPOCHS,
         train_loader,
