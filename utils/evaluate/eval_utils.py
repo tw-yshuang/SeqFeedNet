@@ -78,7 +78,7 @@ class OneEpochVideosAccumulator:
             vid_matrix[-2] += feature[-2]
             vid_matrix[-1] += 1
 
-            self.batchLevel_matrix[:-2] += vid_matrix[:-2]
+            self.batchLevel_matrix[:-2] += feature[:-2]
             self.batchLevel_matrix[-1] += 1
 
 
