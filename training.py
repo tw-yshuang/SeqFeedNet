@@ -257,8 +257,11 @@ class DL_Model:
                     self.optimizer.zero_grad()
 
                 with torch.no_grad():
-                    bg_only_imgs, _ = self.get_bgOnly_and_mask(frame, label)
-                    _, pred_mask = self.get_bgOnly_and_mask(frame, pred)
+                    if isTrain:
+                        bg_only_imgs, _ = self.get_bgOnly_and_mask(frame, label)
+                        _, pred_mask = self.get_bgOnly_and_mask(frame, pred)
+                    else:
+                        bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.batchLevel_matrix[-2] += loss.item()  # batchLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
