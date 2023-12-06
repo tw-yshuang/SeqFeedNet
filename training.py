@@ -462,7 +462,7 @@ if __name__ == '__main__':
                     # RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
                 ]
             ),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            transforms.Normalize(mean=[0.406, 0.456, 0.485], std=[0.225, 0.224, 0.229]),  # BGR
         ]
     )
 
@@ -470,7 +470,7 @@ if __name__ == '__main__':
         [
             # transforms.ToTensor(), # already converted in the __getitem__()
             transforms.Resize(parser.SIZE_HW, antialias=True),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            transforms.Normalize(mean=[0.406, 0.456, 0.485], std=[0.225, 0.224, 0.229]),  # BGR
         ]
     )
 
