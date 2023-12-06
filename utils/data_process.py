@@ -188,7 +188,7 @@ class CDNet2014Dataset(Dataset):
 
         frames = torch.from_numpy(np.stack(frame_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
         labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
-        features[-1] = frames[0]
+        features[-1] = features[1] - frames[0]
 
         # * video_info, features, frames, labels
         return video.id, *self.transforms_cpu(frames, labels, features)
