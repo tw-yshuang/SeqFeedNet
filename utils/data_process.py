@@ -171,7 +171,7 @@ class CDNet2014Dataset(Dataset):
         labels: torch.Tensor
 
         cate, video, frame_id = self.data_infos[idx]
-        features = torch.from_numpy(self.__get_features(video).transpose(0, 3, 1, 2)).type(torch.float32) / 255
+        features = torch.from_numpy(self.__get_features(video, frame_id).transpose(0, 3, 1, 2)).type(torch.float32) / 255
 
         if not self.isTrain:
             # ! test_dataset can use this, but test_loader can not use.
@@ -183,18 +183,19 @@ class CDNet2014Dataset(Dataset):
         frame_ls = []
         label_ls = []
         for i in frame_ids:
-            frame_ls.append(cv2.imread(video.inputPaths_inROI[i], cv2.COLOR_BGR2RGB))
+            frame_ls.append(cv2.imread(video.inputPaths_inROI[i]))
             label_ls.append(np.expand_dims(self.preprocess(cv2.imread(video.gtPaths_inROI[i], cv2.IMREAD_GRAYSCALE)), axis=-1))
 
         frames = torch.from_numpy(np.stack(frame_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
         labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
+        features[-1] = frames[0]
 
         # * video_info, features, frames, labels
         return video.id, *self.transforms_cpu(frames, labels, features)
 
     def __getitem4testIter(self, video: CDNet2014OneVideo):
         for input_path, gt_path in zip(video.inputPaths_inROI, video.gtPaths_inROI):
-            frame = cv2.imread(input_path, cv2.COLOR_BGR2RGB).transpose(2, 0, 1)
+            frame = cv2.imread(input_path).transpose(2, 0, 1)
             frame = torch.from_numpy(np.expand_dims(frame, axis=0)).type(torch.float32) / 255.0
             label = torch.from_numpy(np.expand_dims(self.preprocess(cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)), axis=(0, 1)))
             yield self.transforms_cpu(frame), self.transforms_cpu(label)
@@ -215,11 +216,15 @@ class CDNet2014Dataset(Dataset):
 
         return frame_ids
 
-    def __get_features(self, video: CDNet2014OneVideo, mean=0, std=128):
-        f0 = cv2.imread(random.choice(video.emptyBgPaths), cv2.COLOR_BGR2RGB)
-        f1 = f0 + np.random.normal(mean, std, f0.shape)
+    def __get_features(self, video: CDNet2014OneVideo, frame_id: int, mean=0, std=128):
+        if video.id // 10 == CAT2ID['PTZ']:
+            f0 = cv2.imread(video.emptyBgPaths[len(video.inputPaths_beforeROI) + frame_id])
+        else:
+            f0 = cv2.imread(random.choice(video.emptyBgPaths))
+        f1 = cv2.imread(video.recentBgPaths_inROI[frame_id])
+        f2 = cv2.imread(video.inputPaths_inROI[frame_id])
 
-        return np.stack([f0, f1])
+        return np.stack([f0, f1, f2])
 
     @classmethod
     def next_frame_gap(cls, epoch: int = 1):

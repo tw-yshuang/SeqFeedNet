@@ -500,8 +500,8 @@ if __name__ == '__main__':
     )
 
     #! ========== Network ==========
-    se_model: nn.Module = parser.SE_Net(9, 6)
-    me_model: nn.Module = parser.ME_Net(9, 1)
+    se_model: nn.Module = parser.SE_Net(12, 9)
+    me_model: nn.Module = parser.ME_Net(12, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model, useStandardNorm4Features=parser.useStandardNorm4Features).to(parser.DEVICE)
     optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
