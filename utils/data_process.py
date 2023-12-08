@@ -36,6 +36,7 @@ class CDNet2014OneVideo:
         self.name = name
         self.id = VID2ID[self.name]
 
+        self.ROI_mask: torch.Tensor
         self.temporalROI: Tuple[int]
         self.gtPaths_all: Tuple[str]
         self.inputPaths_all: Tuple[str]
@@ -49,7 +50,9 @@ class CDNet2014OneVideo:
         self.inputPaths_inROI = Tuple[str]
         self.recentBgPaths_inROI = Tuple[str]
 
-        with open(file=f'{DatasetConfig.currentFrDir}/{cate_name}/{self.name}/temporalROI.txt', mode='r') as f:
+        video_dir = f'{DatasetConfig.currentFrDir}/{cate_name}/{self.name}'
+        self.ROI_mask = torch.from_numpy(cv2.imread(f'{video_dir}/ROI.bmp', cv2.IMREAD_GRAYSCALE)) != 0
+        with open(file=f'{video_dir}/temporalROI.txt', mode='r') as f:
             self.temporalROI = tuple(map(int, f.read().split(' ')))
 
         self.__load_paths(cate_name)
@@ -191,7 +194,7 @@ class CDNet2014Dataset(Dataset):
         features[-1] = features[1] - frames[0]
 
         # * video_info, features, frames, labels
-        return video.id, *self.transforms_cpu(frames, labels, features)
+        return video.id, *self.transforms_cpu(frames, labels, features, video.ROI_mask)
 
     def __getitem4testIter(self, video: CDNet2014OneVideo):
         for input_path, gt_path in zip(video.inputPaths_inROI, video.gtPaths_inROI):
@@ -368,7 +371,7 @@ if __name__ == '__main__':
     dataset_cfg = DatasetConfig()
     dataset_cfg.next_stage = 1  # ? test used
 
-    dataset, test_set, train_loader, val_loader = get_data_SetAndLoader(
+    train_loader, val_loader, test_set = get_data_SetAndLoader(
         dataset_cfg=dataset_cfg,
         cv_set=5,
         dataset_rate=1,
