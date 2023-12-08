@@ -110,6 +110,7 @@ class DL_Model:
                     else:
                         frame, label, features = self.test_transforms(frame, label, features)
                         bg_only_img = features[:, 0].unsqueeze(1)
+                        features = self.model.erd_model(features)
 
                     pred, frame, features = self.model(frame, features, bg_only_img)
                     loss: torch.Tensor = self.loss_func(pred, label)
@@ -244,6 +245,7 @@ class DL_Model:
                 frames, labels, features = transforms(frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
+            features = self.model.erd_model(features)
             for step in range(frames.shape[1]):
                 frame, label = frames[:, step], labels[:, step]
 
@@ -497,7 +499,7 @@ if __name__ == '__main__':
     #! ========== Network ==========
     se_model: nn.Module = parser.SE_Net(12, 9)
     me_model: nn.Module = parser.ME_Net(12, 1)
-    sm_net: nn.Module = parser.SM_Net(se_model, me_model, useStandardNorm4Features=parser.useStandardNorm4Features).to(parser.DEVICE)
+    sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
     optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
 
