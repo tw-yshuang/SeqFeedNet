@@ -1,10 +1,13 @@
 import random
-from typing import Dict, List, Union, Callable
+from typing import Dict, List, Callable
 
 import torch
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from torchvision.transforms import InterpolationMode
+
+
+MINIMUM_ROI_AREA_RATE = 0.05 * 0.05
 
 
 def monkeyPatch4Compose__call__(self, img: torch.Tensor):
@@ -33,15 +36,21 @@ class CustomCompose:
     def __init__(self, transforms: List[Callable]) -> None:
         self.transforms = transforms
 
-    def __call__(self, frames: torch.Tensor, labels: torch.Tensor | None = None, features: torch.Tensor | None = None):
+    def __call__(
+        self,
+        frames: torch.Tensor,
+        labels: torch.Tensor | None = None,
+        features: torch.Tensor | None = None,
+        roi_mask: torch.Tensor | None = None,
+    ):
         for t in self.transforms:
             if t.__module__ != transforms.transforms.__name__:
-                frames, labels, features = t(frames, labels, features)
+                frames, labels, features, roi_mask = t(frames, labels, features, roi_mask)
             else:
                 if t.__class__.__name__ == transforms.RandomChoice.__name__:
                     t = t()
                     if t.__module__ != transforms.transforms.__name__:
-                        frames, labels, features = t(frames, labels, features)
+                        frames, labels, features, roi_mask = t(frames, labels, features, roi_mask)
                         continue
 
                 if features is not None:
@@ -119,15 +128,26 @@ class IterativeCustomCompose:
 
 
 def RandomCrop(crop_size=(224, 224), p=0.5):
-    def __RandomCrop(frames: torch.Tensor, labels: torch.Tensor, features: torch.Tensor):
+    minimum_roi_area = int(crop_size[0] * crop_size[1] * MINIMUM_ROI_AREA_RATE)
+
+    def __RandomCrop(
+        frames: torch.Tensor,
+        labels: torch.Tensor,
+        features: torch.Tensor,
+        roi_mask: torch.Tensor | None = None,
+    ):
         if random.random() < p:
             t, l, h, w = transforms.RandomCrop.get_params(frames, crop_size)
+
+            if roi_mask is not None:
+                while torch.where(TF.crop(roi_mask, t, l, h, w) == 1)[0].shape[0] < minimum_roi_area:
+                    t, l, h, w = transforms.RandomCrop.get_params(frames, crop_size)
 
             features = TF.crop(features, t, l, h, w)
             frames = TF.crop(frames, t, l, h, w)
             labels = TF.crop(labels, t, l, h, w)
 
-        return frames, labels, features
+        return frames, labels, features, roi_mask
 
     return __RandomCrop
 
@@ -138,9 +158,21 @@ def RandomResizedCrop(
     ratio: List[float] = (3.0 / 5.0, 2.0 / 1.0),
     p: float = 0.5,
 ):
-    def __RandomResizedCrop(frames: torch.Tensor, labels: torch.Tensor, features: torch.Tensor):
+    minimum_roi_area = int(sizeHW[0] * sizeHW[1] * MINIMUM_ROI_AREA_RATE)
+
+    def __RandomResizedCrop(
+        frames: torch.Tensor,
+        labels: torch.Tensor,
+        features: torch.Tensor,
+        roi_mask: torch.Tensor | None = None,
+    ):
         if random.random() < p:
             t, l, h, w = transforms.RandomResizedCrop.get_params(frames, scale, ratio)
+
+            if roi_mask is not None:
+                while torch.where(TF.crop(roi_mask, t, l, h, w) == 1)[0].shape[0] < minimum_roi_area:
+                    t, l, h, w = transforms.RandomCrop.get_params(frames, scale, ratio)
+
             features = TF.resized_crop(features, t, l, h, w, size=sizeHW, antialias=True)
             frames = TF.resized_crop(frames, t, l, h, w, size=sizeHW, antialias=True)
             labels = TF.resized_crop(labels, t, l, h, w, size=sizeHW, interpolation=InterpolationMode.NEAREST)
@@ -151,6 +183,6 @@ def RandomResizedCrop(
             # if isinstance(labels, torch.Tensor):
             labels = TF.resize(labels, size=sizeHW, interpolation=InterpolationMode.NEAREST)
 
-        return frames, labels, features
+        return frames, labels, features, roi_mask
 
     return __RandomResizedCrop
