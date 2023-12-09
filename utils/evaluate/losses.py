@@ -24,7 +24,7 @@ class CDNet2014Convert(nn.Module):
 
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         inputs, targets = inputs.flatten(1), targets.flatten(1)
-        masks = torch.where(inputs == self.nonvalid, 0, 1).type(torch.bool)
+        masks = torch.where(targets == self.nonvalid, 0, 1).type(torch.bool)
 
         match self.reduction:
             case 'rated':

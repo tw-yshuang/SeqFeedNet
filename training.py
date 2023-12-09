@@ -310,7 +310,6 @@ class Parser:
     SIZE_HW: Tuple[int]
     DATA_SPLIT_RATE: float
 
-    useStandardNorm4Features: bool
     useTestAsVal: bool
     DO_TESTING: bool
 
@@ -323,7 +322,6 @@ def get_parser():
         'se_network': "Sequence Extract Network",
         'me_network': "Mask Extract Network",
         'sm_network': "Sequence to mask Network",
-        'use-standard-normal': "Use standard normalization for se_model output",
         'loss_func': "Please check utils/evaluate/losses.py to find others",
         'optimizer': "Optimizer that provide by Pytorch",
         'learning_rate': "Learning Rate for optimizer",
@@ -344,7 +342,6 @@ def get_parser():
     @click.option('-se', '--se_network', default='UNetVgg16', help=help_doc['se_network'])
     @click.option('-me', '--me_network', default='UNetVgg16', help=help_doc['me_network'])
     @click.option('-sm', '--sm_network', default='SMNet2D', help=help_doc['sm_network'])
-    @click.option('-use-std', '--use-standard-normal', default=False, is_flag=True, help=help_doc['use-standard-normal'])
     @click.option('-loss', '--loss_func', default='FocalLoss4CDNet2014', help=help_doc['loss_func'])
     @click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
     @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
@@ -363,7 +360,6 @@ def get_parser():
         se_network: str,
         me_network: str,
         sm_network: str,
-        use_standard_normal: bool,
         loss_func: str,
         optimizer: str,
         learning_rate: float,
@@ -388,7 +384,6 @@ def get_parser():
         parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
         parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
         parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
-        parser.useStandardNorm4Features = use_standard_normal
         parser.PRETRAIN_WEIGHT = pretrain_weight
 
         #! ========== Hyperparameter ==========
@@ -503,7 +498,7 @@ if __name__ == '__main__':
     se_model: nn.Module = parser.SE_Net(12, 9)
     me_model: nn.Module = parser.ME_Net(12, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model, useStandardNorm4Features=parser.useStandardNorm4Features).to(parser.DEVICE)
-    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE)
+    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=1e-2)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
 
     #! ========== Load Pretrain ==========
@@ -525,7 +520,7 @@ if __name__ == '__main__':
         test_iter_compose,
         device=parser.DEVICE,
         loss_func=loss_func,
-        eval_measure=EvalMeasure(0.5, Loss(reduction='none')),
+        eval_measure=EvalMeasure(0.5, parser.LOSS(reduction='none')),
     )
 
     #! ========== Testing Evaluation ==========
