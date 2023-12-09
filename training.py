@@ -498,7 +498,7 @@ if __name__ == '__main__':
     se_model: nn.Module = parser.SE_Net(9, 6)
     me_model: nn.Module = parser.ME_Net(9, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
-    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE)
+    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=1e-2)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
 
     #! ========== Load Pretrain ==========
@@ -520,7 +520,7 @@ if __name__ == '__main__':
         test_iter_compose,
         device=parser.DEVICE,
         loss_func=loss_func,
-        eval_measure=EvalMeasure(0.5, Loss(reduction='none')),
+        eval_measure=EvalMeasure(0.5, parser.LOSS(reduction='none')),
     )
 
     #! ========== Testing Evaluation ==========
