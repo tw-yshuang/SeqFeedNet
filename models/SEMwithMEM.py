@@ -23,12 +23,11 @@ class StandardNorm(nn.Module):
 
 
 class SMNet2D(nn.Module):
-    def __init__(self, se_model: nn.Module, me_model: nn.Module, useStandardNorm4Features: bool = True, *args, **kwargs) -> None:
+    def __init__(self, se_model: nn.Module, me_model: nn.Module, *args, **kwargs) -> None:
         super(SMNet2D, self).__init__(*args, **kwargs)
 
         self.se_model = se_model
         self.me_model = me_model
-        self.stand_norm = StandardNorm() if useStandardNorm4Features else nn.Identity()
 
     def forward(self, frame: torch.Tensor, features: torch.Tensor, bg_only_imgs: torch.Tensor):
         frame = frame.squeeze(1)
@@ -42,7 +41,6 @@ class SMNet2D(nn.Module):
             )
 
         features = self.se_model(combine_features)
-        features = self.stand_norm(features)
 
         mask = self.me_model(torch.hstack((features, frame)))
 
