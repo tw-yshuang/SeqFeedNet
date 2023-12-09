@@ -103,15 +103,18 @@ class DL_Model:
                 video_id = torch.tensor(video_id).to(self.device).reshape(1, 1)
                 features = features.to(self.device).unsqueeze(0)
 
-                for i, (frame, label) in enumerate(test_iter):
-                    frame, label = frame.to(self.device).unsqueeze(1), label.to(self.device).unsqueeze(1)
+                for i, (frame, rec_frame, label) in enumerate(test_iter):
+                    frame, label = frame.to(self.device).unsqueeze(1)
+                    rec_frame = rec_frame.to(self.device).unsqueeze(1)
+                    label = label.to(self.device).unsqueeze(1)
+
                     if i != 0:
-                        frame, label, _ = self.test_transforms(frame, label, None)
+                        frame, rec_frame, label, _ = self.test_transforms(frame, rec_frame, label, None)
                     else:
-                        frame, label, features = self.test_transforms(frame, label, features)
+                        frame, rec_frame, label, features = self.test_transforms(frame, rec_frame, label, features)
                         bg_only_img = features[:, 0].unsqueeze(1)
 
-                    pred, frame, features = self.model(frame, features, bg_only_img)
+                    pred, frame, features = self.model(frame, rec_frame, features, bg_only_img)
                     loss: torch.Tensor = self.loss_func(pred, label)
 
                     bg_only_img, pred_mask = self.get_bgOnly_and_mask(frame, pred)
@@ -233,22 +236,24 @@ class DL_Model:
         video_id: torch.IntTensor
         features: torch.Tensor
         frames: torch.Tensor
+        rec_frames: torch.Tensor
         labels: torch.Tensor
-        for video_id, frames, labels, features in tqdm(loader):
+        for video_id, frames, rec_frames, labels, features in tqdm(loader):
             video_id = video_id.to(self.device).unsqueeze(1)
             features = features.to(self.device)
             frames = frames.to(self.device)
+            rec_frames = rec_frames.to(self.device)
             labels = labels.to(self.device)
 
             with torch.no_grad():
-                frames, labels, features = transforms(frames, labels, features)
+                frames, rec_frames, labels, features = transforms(frames, rec_frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
             for step in range(frames.shape[1]):
-                frame, label = frames[:, step], labels[:, step]
+                frame, rec_frame, label = frames[:, step], rec_frames[:, step], labels[:, step]
 
                 features = features.detach()  # create a new tensor to detach previous computational graph
-                pred, frame, features = self.model(frame, features, bg_only_imgs)
+                pred, frame, features = self.model(frame, rec_frame, features, bg_only_imgs)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
                 if isTrain:
@@ -496,7 +501,7 @@ if __name__ == '__main__':
 
     #! ========== Network ==========
     se_model: nn.Module = parser.SE_Net(9, 6)
-    me_model: nn.Module = parser.ME_Net(9, 1)
+    me_model: nn.Module = parser.ME_Net(12, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
     optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
