@@ -115,9 +115,8 @@ class DL_Model:
                     loss: torch.Tensor = self.loss_func(pred, label)
 
                     bg_only_img, pred_mask = self.get_bgOnly_and_mask(frame, pred)
-                    videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
                     videos_accumulator.batchLevel_matrix[-2] += loss.to('cpu')  # batchLevel loss is different with others
-                    videos_accumulator.batchLevel_matrix[-1] += 1  # accumulative_times += 1
+                    videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
             summaryRecord.records(videos_accumulator)
 
@@ -269,7 +268,7 @@ class DL_Model:
     def save(self, model: Model | nn.Module, path: str, isFull: bool = False):
         if isFull:
             torch.save(model, f'{path}.pt')
-            torch.save(self.optimizer, f'{path}_{self.optimizer.__class__.__name__}.pickle')
+            torch.save(self.optimizer, f'{path}_{self.optimizer.__class__.__name__}.pt')
         else:
             torch.save(model.state_dict(), f'{path}.pt')
             torch.save(self.optimizer.state_dict(), f'{path}_{self.optimizer.__class__.__name__}.pt')
@@ -431,7 +430,7 @@ if __name__ == '__main__':
     from models.SEMwithMEM import *
     from utils.evaluate.losses import *
 
-    # sys.argv = 'training.py --device 2 -epochs 2 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test'.split()
+    # sys.argv = 'training.py --device 2 -epochs 2 --batch_size 8 -workers 1 -cv 5 -imghw 112-112 -use-t2val -out test'.split()
 
     # sys.argv = "training.py --device 1 -epochs 0 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test -opt SGD --pretrain_weight out/1203-1703_SMNet2D(UNetVgg16-UNetVgg16)_Adam1.0e-04_FocalLoss_BS-9_Set-2_lastBack/bestAcc-F_score.pt".split()
 
