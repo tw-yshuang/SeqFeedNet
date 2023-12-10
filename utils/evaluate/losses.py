@@ -34,13 +34,13 @@ class CDNet2014Convert(nn.Module):
                     losses = torch.vstack(loss_ls).mean()
             case 'none':
                 loss_ls = []
-                for target, input, mask in zip(targets, inputs, masks):
-                    loss_ls.append(self.loss_func(target, input, mask))
+                for input, target, mask in zip(inputs, targets, masks):
+                    loss_ls.append(self.loss_func(input, target, mask))
                     losses = torch.vstack(loss_ls)
             case 'sum':
-                losses = self.loss_func(targets, inputs, masks).sum()
+                losses = self.loss_func(inputs, targets, masks).sum()
             case 'mean':
-                losses = self.loss_func(targets, inputs, masks).mean()
+                losses = self.loss_func(inputs, targets, masks).mean()
             case _:
                 raise ValueError(
                     f"Invalid Value for arg 'reduction': '{self.reduction} \n Supported reduction modes: 'none', 'mean', 'sum'"
@@ -48,7 +48,7 @@ class CDNet2014Convert(nn.Module):
 
         return losses
 
-    def loss_func(self, targets: torch.Tensor, inputs: torch.Tensor, masks: torch.Tensor) -> torch.Tensor:
+    def loss_func(self, inputs: torch.Tensor, targets: torch.Tensor, masks: torch.Tensor) -> torch.Tensor:
         raise NotImplementedError(
             "There has two ways to implement it, \
                                   1: write a loss_func(self, ...) on the child class.\
@@ -64,7 +64,7 @@ class IOULoss4CDNet2014(CDNet2014Convert):
         self.smooth = smooth
         self.loss_func = self.iou_loss_with_mask
 
-    def iou_loss_with_mask(self, target: torch.Tensor, input: torch.Tensor, mask: torch.Tensor):
+    def iou_loss_with_mask(self, inputs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor):
         """
         Args:
             inputs (Tensor): A float tensor of arbitrary shape.
@@ -74,8 +74,8 @@ class IOULoss4CDNet2014(CDNet2014Convert):
                     (0 for the negative class, 1 for the positive class, and -1 for unknown part).
             mask (Tensor): A bool tensor with the same shape as inputs. For extracting inputs and targets without unknown part.
         """
-        input_val = torch.masked_select(target, mask)
-        target_val = torch.masked_select(input, mask)
+        input_val = torch.masked_select(inputs, mask)
+        target_val = torch.masked_select(targets, mask)
 
         intersection = torch.sum(target_val * input_val)
         jac = (intersection + self.smooth) / (torch.sum(input_val) + torch.sum(target_val) - intersection + self.smooth)
@@ -117,7 +117,7 @@ class FocalLoss4CDNet2014(CDNet2014Convert):
         self.operator = nn.Sigmoid() if useSigmoid else nn.Identity()
         self.loss_func = self.focal_loss_with_mask
 
-    def focal_loss_with_mask(self, target: torch.Tensor, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def focal_loss_with_mask(self, inputs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """
         Args:
             inputs (Tensor): A float tensor of arbitrary shape.
@@ -127,8 +127,8 @@ class FocalLoss4CDNet2014(CDNet2014Convert):
                     (0 for the negative class, 1 for the positive class, and -1 for unknown part).
             mask (Tensor): A bool tensor with the same shape as inputs. For extracting inputs and targets without unknown part.
         """
-        input_val = torch.masked_select(target, mask)
-        target_val = torch.masked_select(input, mask)
+        input_val = torch.masked_select(inputs, mask)
+        target_val = torch.masked_select(targets, mask)
 
         p: torch.Tensor = self.operator(input_val)
 
@@ -178,7 +178,7 @@ class FocalLossRated4CDNet2014(CDNet2014Convert):
         self.operator = nn.Sigmoid() if useSigmoid else nn.Identity()
         self.loss_func = self.focal_loss_with_mask_rated
 
-    def focal_loss_with_mask_rated(self, target: torch.Tensor, input: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    def focal_loss_with_mask_rated(self, inputs: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """
         Args:
             inputs (Tensor): A float tensor of arbitrary shape.
@@ -188,8 +188,8 @@ class FocalLossRated4CDNet2014(CDNet2014Convert):
                     (0 for the negative class, 1 for the positive class, and -1 for unknown part).
             mask (Tensor): A bool tensor with the same shape as inputs. For extracting inputs and targets without unknown part.
         """
-        input_val = torch.masked_select(target, mask)
-        target_val = torch.masked_select(input, mask)
+        input_val = torch.masked_select(inputs, mask)
+        target_val = torch.masked_select(targets, mask)
 
         p: torch.Tensor = self.operator(input_val)
 
