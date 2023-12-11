@@ -154,8 +154,8 @@ class DL_Model:
 
         isStop = False
         for self.epoch in range(num_epochs):
-            BasicRecord.row_id = self.epoch
-            CDNet2014Dataset.next_frame_gap(self.epoch)
+            BasicRecord.update_row_id(self.epoch)
+            CDNet2014Dataset.update_frame_gap(self.epoch)
             measure_table = self.create_measure_table()
             videos_accumulator = OneEpochVideosAccumulator()
             isBest = False
