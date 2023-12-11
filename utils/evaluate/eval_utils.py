@@ -13,7 +13,7 @@ if __name__ == '__main__':
 
 from utils.DataID_MatchTable import VID2ID, CAT2ID, ID2VID, ID2CAT
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
-from utils.evaluate.losses import FocalLoss4CDNet2014 as Loss
+from utils.evaluate.losses import IOULoss4CDNet2014 as Loss
 from submodules.UsefulFileTools.FileOperator import check2create_dir
 
 
