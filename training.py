@@ -17,7 +17,7 @@ from models.unet import UNetVgg16 as BackBone
 from models.SEMwithMEM import SMNet2D as Model
 from utils.data_process import CDNet2014Dataset
 from utils.transforms import IterativeCustomCompose
-from utils.evaluate.losses import FocalLoss4CDNet2014 as Loss
+from utils.evaluate.losses import IOULoss4CDNet2014 as Loss
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
 from utils.evaluate.eval_utils import (
     ACC_NAMES,
@@ -355,7 +355,7 @@ def get_parser():
     @click.option('-se', '--se_network', default='UNetVgg16', help=help_doc['se_network'])
     @click.option('-me', '--me_network', default='UNetVgg16', help=help_doc['me_network'])
     @click.option('-sm', '--sm_network', default='SMNet2D', help=help_doc['sm_network'])
-    @click.option('-loss', '--loss_func', default='FocalLoss4CDNet2014', help=help_doc['loss_func'])
+    @click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help=help_doc['loss_func'])
     @click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
     @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
     @click.option('-epochs', '--num_epochs', default=0, help=help_doc['num_epochs'])
