@@ -225,7 +225,7 @@ class CDNet2014Dataset(Dataset):
         return np.stack([f0, f1])
 
     @classmethod
-    def next_frame_gap(cls, epoch: int = 1):
+    def update_frame_gap(cls, epoch: int = 1):
         """
         The function updates the value of the "gap" attribute based on the current epoch and the
         "next_stage" value from the configuration.

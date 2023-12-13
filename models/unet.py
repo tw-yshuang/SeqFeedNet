@@ -63,3 +63,6 @@ class UNetVgg16(nn.Module):
 
         cd_out = self.out(u1)
         return cd_out
+
+    def __repr__(self):
+        return 'UNetVgg16'
