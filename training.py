@@ -83,6 +83,9 @@ class DL_Model:
         return measure_table
 
     def fix_testing_size(self, dataset: CDNet2014Dataset | Dataset, idx: int):
+        if idx == len(dataset.data_infos):
+            return
+
         hw = dataset.data_infos[idx][1].ROI_mask.shape[-2:]
         if str(self.model.me_model) == 'UNetVgg16':
             h, w = int(hw[0] // 16 * 16), int(hw[1] // 16 * 16)  # for fix the UNet concat dimension problem
