@@ -74,8 +74,7 @@ class OneEpochVideosAccumulator:
             # feature: (tp, fp, tn, fn, loss, video_id)
 
             vid_matrix = self.vid_matrix.setdefault(int(feature[-1]), torch.zeros_like(self.batchLevel_matrix))
-            vid_matrix[:-2] += feature[:-2]
-            vid_matrix[-2] += feature[-2]
+            vid_matrix[:-1] += feature[:-1]
             vid_matrix[-1] += 1
 
             self.batchLevel_matrix[:-2] += feature[:-2]
@@ -83,19 +82,25 @@ class OneEpochVideosAccumulator:
 
 
 class BasicRecord:
-    row_id = 0
+    __row_id = 0
 
     def __init__(self, task_name: str, num_epochs: int = 0) -> None:
         self.task_name = task_name
-        self.score_records = torch.zeros((num_epochs, len(ORDER_NAMES)), dtype=torch.float32)
+        self.__acc_freq = 0
+        self.__score_records = torch.zeros((num_epochs, len(ORDER_NAMES)), dtype=torch.float32)
 
     @classmethod
     def next_row(cls):
-        cls.row_id += 1
+        cls.__row_id += 1
 
     @classmethod
     def update_row_id(cls, new_id: int):
-        cls.row_id = new_id
+        cls.__row_id = new_id
+
+    @classmethod
+    @property
+    def row_id(self):
+        return self.__row_id
 
     @staticmethod
     def convert2df(records: torch.Tensor, start_row: int = 0, end_row: int = None):
@@ -103,23 +108,31 @@ class BasicRecord:
         return pd.DataFrame(record_dict)
 
     def concatScoreRecords(self, score_records2: torch.Tensor, *args):
-        self.score_records = torch.vstack([self.score_records, score_records2, *args])
-        self.update_row_id(self.score_records.shape[0])
+        self.__score_records = torch.vstack([self.__score_records, score_records2, *args])
+        self.update_row_id(self.__score_records.shape[0])
 
-        return self.score_records
+        return self.__score_records
 
     def save(self, saveDir: str, start_row: int = 0, end_row: int = None):
-        self.convert2df(self.score_records, start_row, end_row).to_csv(f'{saveDir}/{self.task_name}.csv')
+        self.convert2df(self.__score_records, start_row, end_row).to_csv(f'{saveDir}/{self.task_name}.csv')
 
     def record(self, *args: Tuple[torch.Tensor]):
-        self.score_records[self.row_id, :] = torch.tensor(args, dtype=torch.float32)
+        self.__score_records[self.__row_id] = torch.tensor(args, dtype=torch.float32)
+
+    def accumulate(self, single_result: torch.Tensor):
+        self.__score_records[self.__row_id] += single_result
+        self.__acc_freq += 1
+
+    def finish_acc_and_record(self):
+        self.record(*(self.__score_records[self.__row_id] / self.__acc_freq))
+        self.__acc_freq = 0
 
     @property
     def last_scores(self):
-        return self.score_records[self.row_id]
+        return self.__score_records[self.__row_id]
 
     def __repr__(self) -> str:
-        return f'{self.task_name}(\n{self.score_records[:self.row_id]}\n)'
+        return f'{self.task_name}(\n{self.__score_records[:self.__row_id]}\n)'
 
 
 class SummaryRecord:
@@ -147,19 +160,21 @@ class SummaryRecord:
         vid: int
         k: torch.Tensor
         for vid, k in videosAccumulator.vid_matrix.items():
-            self.video_dict.setdefault(vid, BasicRecord(ID2VID[vid], self.num_epochs)).record(*self.acc_func(*k[:-2]), k[-2] / k[-1])
-            self.write2tensorboard(task_name=f'{ID2CAT[vid // 10]}/{ID2VID[vid]}', scores=self.video_dict[vid].last_scores)
-
-        cid_freq = {}
-        for vid, video_record in self.video_dict.items():
             cid = vid // 10
-            cid_freq[cid] = cid_freq.setdefault(cid, 0) + 1
 
+            video_record = self.video_dict.setdefault(vid, BasicRecord(ID2VID[vid], self.num_epochs))
             cate_record = self.cate_dict.setdefault(cid, BasicRecord(ID2CAT[cid], self.num_epochs))
-            cate_record.record(*((cate_record.last_scores * (cid_freq[cid] - 1) + video_record.last_scores) / cid_freq[cid]))
-            self.write2tensorboard(task_name=str(ID2CAT[cid]), scores=self.cate_dict[cid].last_scores)
 
-        self.overall.record(*torch.stack([cate_record.last_scores for cate_record in self.cate_dict.values()]).mean(0))
+            video_record.record(*self.acc_func(*k[:-2]), k[-2] / k[-1])
+            cate_record.accumulate(video_record.last_scores)
+            self.write2tensorboard(task_name=f'{ID2CAT[cid]}/{ID2VID[vid]}', scores=self.video_dict[vid].last_scores)
+
+        for cate_record in self.cate_dict.values():
+            cate_record.finish_acc_and_record()
+            self.overall.accumulate(cate_record.last_scores)
+            self.write2tensorboard(task_name=cate_record.task_name, scores=cate_record.last_scores)
+
+        self.overall.finish_acc_and_record()
         self.write2tensorboard(task_name=self.overall.task_name, scores=self.overall.last_scores)
 
         batchLevel_loss = videosAccumulator.batchLevel_matrix[-2] / videosAccumulator.batchLevel_matrix[-1]
