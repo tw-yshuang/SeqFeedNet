@@ -82,6 +82,18 @@ class DL_Model:
 
         return measure_table
 
+    def fix_testing_size(self, dataset: CDNet2014Dataset | Dataset, idx: int):
+        if idx == len(dataset.data_infos):
+            return
+
+        hw = dataset.data_infos[idx][1].ROI_mask.shape[-2:]
+        if str(self.model.me_model) == 'UNetVgg16':
+            h, w = int(hw[0] // 16 * 16), int(hw[1] // 16 * 16)  # for fix the UNet concat dimension problem
+        else:
+            h, w = int(hw[0]), int(hw[1])
+        dataset.transforms_cpu.transforms[0] = transforms.Resize((h, w), antialias=True)
+        self.test_transforms.target_size = (h, w)
+
     def testing(self, saveDir: str, dataset: CDNet2014Dataset | Dataset):
         summaryRecord = SummaryRecord(saveDir, 1, None, self.acc_func, mode='Test')
         self.__testing(dataset, summaryRecord=summaryRecord)
@@ -99,7 +111,10 @@ class DL_Model:
             frame: torch.Tensor
             label: torch.Tensor
             test_iter: Generator[Tuple[torch.Tensor, torch.Tensor]]
-            for video_id, features, test_iter in track(dataset, "Test Video Processing..."):
+
+            self.fix_testing_size(dataset, 0)
+
+            for next_idx, (video_id, features, test_iter) in enumerate(track(dataset, "Test Video Processing..."), 1):
                 video_id = torch.tensor(video_id).to(self.device).reshape(1, 1)
                 features = features.to(self.device).unsqueeze(0)
 
@@ -117,6 +132,8 @@ class DL_Model:
                     bg_only_img, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.batchLevel_matrix[-2] += loss.to('cpu')  # batchLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
+
+                self.fix_testing_size(dataset, next_idx)
 
             summaryRecord.records(videos_accumulator)
 
@@ -154,8 +171,8 @@ class DL_Model:
 
         isStop = False
         for self.epoch in range(num_epochs):
-            BasicRecord.row_id = self.epoch
-            CDNet2014Dataset.next_frame_gap(self.epoch)
+            BasicRecord.update_row_id(self.epoch)
+            CDNet2014Dataset.update_frame_gap(self.epoch)
             measure_table = self.create_measure_table()
             videos_accumulator = OneEpochVideosAccumulator()
             isBest = False
@@ -435,6 +452,12 @@ if __name__ == '__main__':
     # sys.argv = "training.py --device 1 -epochs 0 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test -opt SGD --pretrain_weight out/1203-1703_SMNet2D(UNetVgg16-UNetVgg16)_Adam1.0e-04_FocalLoss_BS-9_Set-2_lastBack/bestAcc-F_score.pt".split()
 
     # sys.argv = "training.py --device 1 -epochs 0 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test -opt SGD --pretrain_weight out/1203-1703_SMNet2D(UNetVgg16-UNetVgg16)_Adam1.0e-04_FocalLoss_BS-9_Set-2_lastBack/bestAcc-F_score.pt --do_testing".split()
+
+    # sys.argv = 'training.py --device 0 -epochs 2 --batch_size 24 -workers 8 -cv 5 -imghw 112-112 -use-t2val -out test'.split()
+
+    # sys.argv = 'training.py --device 2 -epochs 0 -workers 8 -cv 2 -imghw 224-224 -opt Adam --pretrain_weight out/1211-0348_bsuv.weight-decay.random.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2/bestAcc-F_score.pt -out result --do_testing'.split()
+
+    # sys.argv = 'training.py --device 1 -epochs 0 -workers 2 -cv 2 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/bestAcc-F_score.pt -out result --do_testing'.split()
 
     parser = get_parser()
 
