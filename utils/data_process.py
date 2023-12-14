@@ -166,7 +166,7 @@ class CDNet2014Dataset(Dataset):
     def __collect_testing_data(self):
         for cate in self.categories:
             for video in cate.videos:
-                self.data_infos.append((cate, video, None))
+                self.data_infos.append((cate, video, 0))
 
     def __getitem__(self, idx: int) -> Any:
         features: torch.Tensor
