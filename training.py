@@ -118,18 +118,18 @@ class DL_Model:
                 video_id = torch.tensor(video_id).to(self.device).reshape(1, 1)
                 features = features.to(self.device).unsqueeze(0)
 
-                for i, (frame, rec_frame, label) in enumerate(test_iter):
+                for i, (frame, empty_frame, label) in enumerate(test_iter):
                     frame, label = frame.to(self.device).unsqueeze(1), label.to(self.device)
-                    rec_frame = rec_frame.to(self.device).unsqueeze(1)
+                    empty_frame = empty_frame.to(self.device).unsqueeze(1)
                     label = label.to(self.device).unsqueeze(1)
 
                     if i != 0:
-                        frame, rec_frame, label, _ = self.test_transforms(frame, rec_frame, label, None)
+                        frame, empty_frame, label, _ = self.test_transforms(frame, empty_frame, label, None)
                     else:
-                        frame, rec_frame, label, features = self.test_transforms(frame, rec_frame, label, features)
+                        frame, empty_frame, label, features = self.test_transforms(frame, empty_frame, label, features)
                         bg_only_img = features[:, 0].unsqueeze(1)
 
-                    pred, frame, features = self.model(frame, rec_frame, features, bg_only_img)
+                    pred, frame, features = self.model(frame, empty_frame, features, bg_only_img)
                     loss: torch.Tensor = self.loss_func(pred, label)
 
                     bg_only_img, pred_mask = self.get_bgOnly_and_mask(frame, pred)
@@ -463,6 +463,8 @@ if __name__ == '__main__':
     # sys.argv = 'training.py --device 2 -epochs 0 -workers 8 -cv 2 -imghw 224-224 -opt Adam --pretrain_weight out/1211-0348_bsuv.weight-decay.random.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2/bestAcc-F_score.pt -out result --do_testing'.split()
 
     # sys.argv = 'training.py --device 1 -epochs 0 -workers 2 -cv 2 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/bestAcc-F_score.pt -out result --do_testing'.split()
+
+    # sys.argv = 'training.py --device 1 -epochs 200 --batch_size 27 -workers 8 -cv 2 -imghw 112-112 -use-t2val -opt Adam -out EmAsInp.112'.split()
 
     parser = get_parser()
 

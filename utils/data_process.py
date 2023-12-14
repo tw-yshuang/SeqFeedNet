@@ -171,7 +171,7 @@ class CDNet2014Dataset(Dataset):
     def __getitem__(self, idx: int) -> Any:
         features: torch.Tensor
         frames: torch.Tensor
-        recent_frames: torch.Tensor
+        empty_frames: torch.Tensor
         labels: torch.Tensor
 
         cate, video, frame_id = self.data_infos[idx]
@@ -184,27 +184,38 @@ class CDNet2014Dataset(Dataset):
             return video.id, self.transforms_cpu(features), self.__getitem4testIter(video)
 
         frame_ids = self.__get_frameIDs(video, frame_id)
+
+        if video.id // 10 != CAT2ID['PTZ']:
+            emptyBg4InputPaths = tuple(random.choices(video.emptyBgPaths, k=len(frame_ids)))
+        else:
+            emptyBg4InputPaths = tuple([video.emptyBgPaths[idx] for idx in frame_ids])
+
         frame_ls = []
-        recent_ls = []
+        empty_ls = []
         label_ls = []
-        for i in frame_ids:
-            frame_ls.append(cv2.imread(video.inputPaths_inROI[i]))
-            recent_ls.append(cv2.imread(video.recentBgPaths_inROI[i]))
-            label_ls.append(np.expand_dims(self.preprocess(cv2.imread(video.gtPaths_inROI[i], cv2.IMREAD_GRAYSCALE)), axis=-1))
+        for i, idx in enumerate(frame_ids):
+            frame_ls.append(cv2.imread(video.inputPaths_inROI[idx]))
+            empty_ls.append(cv2.imread(emptyBg4InputPaths[i]))
+            label_ls.append(np.expand_dims(self.preprocess(cv2.imread(video.gtPaths_inROI[idx], cv2.IMREAD_GRAYSCALE)), axis=-1))
 
         frames = torch.from_numpy(np.stack(frame_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
-        recent_frames = torch.from_numpy(np.stack(recent_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
+        empty_frames = torch.from_numpy(np.stack(empty_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
         labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
 
-        # * video_info, frames, recent_frames, labels, features
-        return video.id, *self.transforms_cpu(frames, recent_frames, labels, features, video.ROI_mask)
+        # * video_info, frames, empty_frames, labels, features
+        return video.id, *self.transforms_cpu(frames, empty_frames, labels, features, video.ROI_mask)
 
     def __getitem4testIter(self, video: CDNet2014OneVideo):
-        for input_path, recent_path, gt_path in zip(video.inputPaths_inROI, video.recentBgPaths_inROI, video.gtPaths_inROI):
+        if video.id // 10 != CAT2ID['PTZ']:
+            emptyBg4InputPaths = tuple(random.choices(video.emptyBgPaths, k=len(video.inputPaths_inROI)))
+        else:
+            emptyBg4InputPaths = video.emptyBgPaths[len(video.inputPaths_beforeROI) :]
+
+        for input_path, empty_path, gt_path in zip(video.inputPaths_inROI, emptyBg4InputPaths, video.gtPaths_inROI):
             frame = torch.from_numpy(np.expand_dims(cv2.imread(input_path).transpose(2, 0, 1), axis=0)).type(torch.float32) / 255.0
-            recent = torch.from_numpy(np.expand_dims(cv2.imread(recent_path).transpose(2, 0, 1), axis=0)).type(torch.float32) / 255.0
+            empty = torch.from_numpy(np.expand_dims(cv2.imread(empty_path).transpose(2, 0, 1), axis=0)).type(torch.float32) / 255.0
             label = torch.from_numpy(np.expand_dims(self.preprocess(cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)), axis=(0, 1)))
-            yield self.transforms_cpu(frame), self.transforms_cpu(recent), self.transforms_cpu(label)
+            yield self.transforms_cpu(frame), self.transforms_cpu(empty), self.transforms_cpu(label)
 
     # *dataset selecting strategy
     def __get_frameIDs(self, video: CDNet2014OneVideo, start_id: int) -> List[int]:
