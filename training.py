@@ -119,7 +119,7 @@ class DL_Model:
                 features = features.to(self.device).unsqueeze(0)
 
                 for i, (frame, rec_frame, label) in enumerate(test_iter):
-                    frame, label = frame.to(self.device).unsqueeze(1)
+                    frame, label = frame.to(self.device).unsqueeze(1), label.to(self.device)
                     rec_frame = rec_frame.to(self.device).unsqueeze(1)
                     label = label.to(self.device).unsqueeze(1)
 
