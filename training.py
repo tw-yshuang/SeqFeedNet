@@ -253,36 +253,50 @@ class DL_Model:
         video_id: torch.IntTensor
         features: torch.Tensor
         frames: torch.Tensor
-        rec_frames: torch.Tensor
+        empty_frames: torch.Tensor
         labels: torch.Tensor
-        for video_id, frames, rec_frames, labels, features in tqdm(loader):
+        for video_id, frames, empty_frames, labels, features in tqdm(loader):
             video_id = video_id.to(self.device).unsqueeze(1)
             features = features.to(self.device)
             frames = frames.to(self.device)
-            rec_frames = rec_frames.to(self.device)
+            empty_frames = empty_frames.to(self.device)
             labels = labels.to(self.device)
 
             with torch.no_grad():
-                frames, rec_frames, labels, features = transforms(frames, rec_frames, labels, features)
+                frames, empty_frames, labels, features = transforms(frames, empty_frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
             features = self.model.erd_model(features)
+            # losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
             for step in range(frames.shape[1]):
-                frame, rec_frame, label = frames[:, step], rec_frames[:, step], labels[:, step]
+                frame, empty_frame, label = frames[:, step], empty_frames[:, step], labels[:, step]
 
-                features = features.detach()  # create a new tensor to detach previous computational graph
-                pred, frame, features = self.model(frame, rec_frame, features, bg_only_imgs)
+                # features = features.detach()  # create a new tensor to detach previous computational graph
+                pred, frame, features = self.model(frame, empty_frame, features, bg_only_imgs)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
-                if isTrain:
-                    loss.backward()
-                    self.optimizer.step()
-                    self.optimizer.zero_grad()
+                # losses[step] = loss
+
+                # if isTrain:
+                #     loss.backward()
+                #     self.optimizer.step()
+                #     self.optimizer.zero_grad()
 
                 with torch.no_grad():
-                    bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
-                    videos_accumulator.batchLevel_matrix[-2] += loss.item()  # pixelLevel loss is different with others
+                    if isTrain:
+                        bg_only_imgs, _ = self.get_bgOnly_and_mask(frame, label)
+                        _, pred_mask = self.get_bgOnly_and_mask(frame, pred)
+                    else:
+                        bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
+                    videos_accumulator.batchLevel_matrix[-2] += loss.item()  # batchLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
+
+            if isTrain:
+                # losses.sum().backward()
+                loss.backward()
+                # losses.backward()
+                self.optimizer.step()
+                self.optimizer.zero_grad()
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
         pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
