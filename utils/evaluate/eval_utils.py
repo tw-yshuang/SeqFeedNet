@@ -99,8 +99,8 @@ class BasicRecord:
 
     @classmethod
     @property
-    def row_id(self):
-        return self.__row_id
+    def row_id(cls):
+        return cls.__row_id
 
     @staticmethod
     def convert2df(records: torch.Tensor, start_row: int = 0, end_row: int = None):
