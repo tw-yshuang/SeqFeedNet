@@ -527,7 +527,7 @@ if __name__ == '__main__':
 
     #! ========== Network ==========
     se_model: nn.Module = parser.SE_Net(12, 9)
-    me_model: nn.Module = parser.ME_Net(12, 1)
+    me_model: nn.Module = parser.ME_Net(15, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
     optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=1e-2)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
