@@ -175,7 +175,7 @@ class CDNet2014Dataset(Dataset):
         labels: torch.Tensor
 
         cate, video, frame_id = self.data_infos[idx]
-        features = torch.from_numpy(self.__get_features(video).transpose(0, 3, 1, 2)).type(torch.float32) / 255
+        features = torch.from_numpy(self.__get_features(video, frame_id).transpose(0, 3, 1, 2)).type(torch.float32) / 255
 
         if not self.isTrain:
             # ! test_dataset can use this, but test_loader can not use.
@@ -201,6 +201,7 @@ class CDNet2014Dataset(Dataset):
         frames = torch.from_numpy(np.stack(frame_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
         empty_frames = torch.from_numpy(np.stack(empty_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
         labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
+        features[-1] = features[1] - frames[0]
 
         # * video_info, frames, empty_frames, labels, features
         return video.id, *self.transforms_cpu(frames, empty_frames, labels, features, video.ROI_mask)
@@ -233,11 +234,15 @@ class CDNet2014Dataset(Dataset):
 
         return frame_ids
 
-    def __get_features(self, video: CDNet2014OneVideo, mean=0, std=128):
-        f0 = cv2.imread(random.choice(video.emptyBgPaths))
-        f1 = f0 + np.random.normal(mean, std, f0.shape)
+    def __get_features(self, video: CDNet2014OneVideo, frame_id: int, mean=0, std=128):
+        if video.id // 10 == CAT2ID['PTZ']:
+            f0 = cv2.imread(video.emptyBgPaths[len(video.inputPaths_beforeROI) + frame_id])
+        else:
+            f0 = cv2.imread(random.choice(video.emptyBgPaths))
+        f1 = cv2.imread(video.recentBgPaths_inROI[frame_id])
+        f2 = cv2.imread(video.inputPaths_inROI[frame_id])
 
-        return np.stack([f0, f1])
+        return np.stack([f0, f1, f2])
 
     @classmethod
     def update_frame_gap(cls, epoch: int = 1):
