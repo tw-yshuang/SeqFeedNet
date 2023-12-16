@@ -13,7 +13,7 @@ if __name__ == '__main__':
     target = 'Overall'
     filenames = list(set(get_filenames(dir_name, f'**/Test/{target}.csv', withDirPath=False)))
 
-    score_names = ['Prec', 'Recall', 'F_score', 'ACC']
+    score_names = ['Prec', 'Recall', 'F_score', 'ACC', 'IOULoss']
     col_names = ['Name', 'Full_Name', 'Type', 'Epoch', *score_names]
     col_dict = {name: [] for name in col_names}
 
