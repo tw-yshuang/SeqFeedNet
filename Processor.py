@@ -1,8 +1,7 @@
-import random
+import sys, time, random
 from pathlib import Path
 from typing import Callable, Generator, List, Tuple
 
-import click
 from tqdm import tqdm
 from rich.table import Table
 from rich.console import Console
@@ -12,11 +11,16 @@ from torch import nn
 from torch import optim
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
+from torchvision import transforms
 
+from models.unet import *
+from models.SEMwithMEM import *
+from utils.evaluate.losses import *
 from models.unet import UNetVgg16 as BackBone
 from models.SEMwithMEM import SMNet2D as Model
 from utils.data_process import CDNet2014Dataset
-from utils.transforms import IterativeCustomCompose
+from utils.data_process import get_data_LoadersAndSet, DatasetConfig
+from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose, IterativeCustomCompose
 from utils.evaluate.losses import IOULoss4CDNet2014 as Loss
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
 from utils.evaluate.eval_utils import (
@@ -29,6 +33,7 @@ from utils.evaluate.eval_utils import (
     OneEpochVideosAccumulator,
 )
 from submodules.UsefulFileTools.WordOperator import str_format
+from submodules.UsefulFileTools.FileOperator import check2create_dir
 
 PROJECT_DIR = str(Path(__file__).resolve())
 
@@ -43,7 +48,7 @@ def get_device(id: int = 0):
     return torch.device(device)
 
 
-class DL_Model:
+class Processor:
     def __init__(
         self,
         model: nn.Module | Model,
@@ -168,7 +173,7 @@ class DL_Model:
         # Summary created
         summary_path = f'{saveDir}/summary'
         writer = SummaryWriter(summary_path)
-        for data, name in zip([train_loader, val_loader, test_set], ['Train', 'Val', 'Test']):
+        for data, name in zip([loader, val_loader, test_set], ['Train', 'Val', 'Test']):
             if data is not None:
                 self.summaries.append(SummaryRecord(summary_path, num_epochs, writer, self.acc_func, mode=name))
 
@@ -252,24 +257,24 @@ class DL_Model:
         video_id: torch.IntTensor
         features: torch.Tensor
         frames: torch.Tensor
-        rec_frames: torch.Tensor
+        empty_frames: torch.Tensor
         labels: torch.Tensor
-        for video_id, frames, rec_frames, labels, features in tqdm(loader):
+        for video_id, frames, empty_frames, labels, features in tqdm(loader):
             video_id = video_id.to(self.device).unsqueeze(1)
             features = features.to(self.device)
             frames = frames.to(self.device)
-            rec_frames = rec_frames.to(self.device)
+            empty_frames = empty_frames.to(self.device)
             labels = labels.to(self.device)
 
             with torch.no_grad():
-                frames, rec_frames, labels, features = transforms(frames, rec_frames, labels, features)
+                frames, empty_frames, labels, features = transforms(frames, empty_frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
             for step in range(frames.shape[1]):
-                frame, rec_frame, label = frames[:, step], rec_frames[:, step], labels[:, step]
+                frame, empty_frame, label = frames[:, step], empty_frames[:, step], labels[:, step]
 
                 features = features.detach()  # create a new tensor to detach previous computational graph
-                pred, frame, features = self.model(frame, rec_frame, features, bg_only_imgs)
+                pred, frame, features = self.model(frame, empty_frame, features, bg_only_imgs)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
                 if isTrain:
@@ -338,136 +343,82 @@ class Parser:
     OUT: str
 
 
-def get_parser():
-    help_doc = {
-        'se_network': "Sequence Extract Network",
-        'me_network': "Mask Extract Network",
-        'sm_network': "Sequence to mask Network",
-        'loss_func': "Please check utils/evaluate/losses.py to find others",
-        'optimizer': "Optimizer that provide by Pytorch",
-        'learning_rate': "Learning Rate for optimizer",
-        'num_epochs': "Number of epochs",
-        'batch_size': "Number of batch_size",
-        'num_workers': "Number of workers for data processing",
-        'cv_set_number': "Cross validation set number for training and test videos will be selected",
-        'img_sizeHW': "Image size for training",
-        'data_split_rate': "Split data to train_set & val_set",
-        'use_test_as_val': "Use test_data as validation data, use this flag will set '--data_split_rate=1.0'",
-        'device': "CUDA ID, if system can not find Nvidia GPU, it will use CPU",
-        'do_testing': "Do testing evaluation is a time-consuming process, suggest not do it",
-        'pretrain_weight': "Pretrain weight, model structure must same with the setting",
-        'output': "Model output directory",
-    }
+def convertStr2Parser(
+    se_network: str = 'UNetVgg16',
+    me_network: str = 'UNetVgg16',
+    sm_network: str = 'SMNet2D',
+    loss_func: str = 'IOULoss4CDNet2014',
+    optimizer: str = 'Adam',
+    learning_rate: float = 1e-4,
+    num_epochs: int = 0,
+    batch_size: int = 8,
+    num_workers: int = 1,
+    cv_set_number: int = 1,
+    img_sizeHW: str = '224-224',
+    data_split_rate: float = 1.0,
+    use_test_as_val: bool = False,
+    device: int = 0,
+    do_testing: bool = False,
+    pretrain_weight: str = '',
+    output: str = '',
+):
+    '''
+    Args
+        se_network: "Sequence Extract Network",
+        me_network: "Mask Extract Network",
+        sm_network: "Sequence to mask Network",
+        loss_func: "Please check utils/evaluate/losses.py to find others",
+        optimizer: "Optimizer that provide by Pytorch",
+        learning_rate: "Learning Rate for optimizer",
+        num_epochs: "Number of epochs",
+        batch_size: "Number of batch_size",
+        num_workers: "Number of workers for data processing",
+        cv_set_number: "Cross validation set number for training and test videos will be selected",
+        img_sizeHW: "Image size for training",
+        data_split_rate: "Split data to train_set & val_set",
+        use_test_as_val: "Use test_data as validation data, use this flag will set '--data_split_rate=1.0'",
+        device: "CUDA ID, if system can not find Nvidia GPU, it will use CPU",
+        do_testing: "Do testing evaluation is a time-consuming process, suggest not do it",
+        pretrain_weight: "Pretrain weight, model structure must same with the setting",
+        output: "Model output directory"
+    '''
+    parser = Parser()
+    module_locate = sys.modules[__name__]
 
-    @click.command(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=120))
-    @click.option('-se', '--se_network', default='UNetVgg16', help=help_doc['se_network'])
-    @click.option('-me', '--me_network', default='UNetVgg16', help=help_doc['me_network'])
-    @click.option('-sm', '--sm_network', default='SMNet2D', help=help_doc['sm_network'])
-    @click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help=help_doc['loss_func'])
-    @click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
-    @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
-    @click.option('-epochs', '--num_epochs', default=0, help=help_doc['num_epochs'])
-    @click.option('-bs', '--batch_size', default=8, help=help_doc['batch_size'])
-    @click.option('-workers', '--num_workers', default=1, help=help_doc['num_workers'])
-    @click.option('-cv', '--cv_set_number', default=1, help=help_doc['cv_set_number'])
-    @click.option('-imghw', '--img_sizeHW', 'img_sizeHW', default='224-224', help=help_doc['img_sizeHW'])
-    @click.option('-drate', '--data_split_rate', default=1.0, help=help_doc['data_split_rate'])
-    @click.option('-use-t2val', '--use_test_as_val', default=False, is_flag=True, help=help_doc['use_test_as_val'])
-    @click.option('--device', default=0, help=help_doc['device'])
-    @click.option('--do_testing', default=False, is_flag=True, help=help_doc['do_testing'])
-    @click.option('--pretrain_weight', default='', help=help_doc['pretrain_weight'])
-    @click.option('-out', '--output', default='', help=help_doc['output'])
-    def cli(
-        se_network: str,
-        me_network: str,
-        sm_network: str,
-        loss_func: str,
-        optimizer: str,
-        learning_rate: float,
-        num_epochs: int,
-        batch_size: int,
-        num_workers: int,
-        cv_set_number: int,
-        img_sizeHW: str,
-        data_split_rate: float,
-        use_test_as_val: bool,
-        device: int,
-        do_testing: bool,
-        pretrain_weight: str,
-        output: str,
-    ):
-        parser = Parser()
-        module_locate = sys.modules[__name__]
+    parser.OUT = output
+    parser.DEVICE = get_device(device)
+    #! ========== Network ==========
+    parser.PRETRAIN_WEIGHT = pretrain_weight
+    if pretrain_weight != '':
+        sm_network, nets = pretrain_weight.split('/')[-2].split('_')[-5].split('.')
+        se_network, me_network = nets.split('-')
+    parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
+    parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
+    parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
 
-        parser.DEVICE = get_device(device)
-        parser.OUT = f'_{output}' if output != '' else ''
-        #! ========== Network ==========
-        parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
-        parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
-        parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
-        parser.PRETRAIN_WEIGHT = pretrain_weight
+    #! ========== Hyperparameter ==========
+    parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
+    parser.OPTIMIZER: optim = getattr(optim, optimizer)
+    parser.LEARNING_RATE = learning_rate
+    parser.NUM_EPOCHS = num_epochs
+    parser.BATCH_SIZE = batch_size
 
-        #! ========== Hyperparameter ==========
-        parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
-        parser.OPTIMIZER: optim = getattr(optim, optimizer)
-        parser.LEARNING_RATE = learning_rate
-        parser.NUM_EPOCHS = num_epochs
-        parser.BATCH_SIZE = batch_size
+    #! ========== Dataset ==========
+    parser.NUM_WORKERS = num_workers
+    parser.CV_SET = cv_set_number
+    parser.DO_TESTING = do_testing
+    parser.useTestAsVal = use_test_as_val
+    parser.SIZE_HW = tuple(map(int, img_sizeHW.split('-')))
 
-        #! ========== Dataset ==========
-        parser.NUM_WORKERS = num_workers
-        parser.CV_SET = cv_set_number
-        parser.DO_TESTING = do_testing
-        parser.useTestAsVal = use_test_as_val
-        parser.SIZE_HW = tuple(map(int, img_sizeHW.split('-')))
+    if use_test_as_val is True:
+        parser.DATA_SPLIT_RATE = 1.0
+    else:
+        parser.DATA_SPLIT_RATE = data_split_rate
 
-        if use_test_as_val is True:
-            parser.DATA_SPLIT_RATE = 1.0
-        else:
-            parser.DATA_SPLIT_RATE = data_split_rate
-
-        return parser
-
-    parser: Parser = cli(standalone_mode=False)
-    if '-h' in sys.argv or '--help' in sys.argv:
-        exit()
     return parser
 
 
-if __name__ == '__main__':
-    import sys, time
-
-    from torch import optim
-    from torchvision import transforms
-    from utils.data_process import get_data_SetAndLoader, DatasetConfig
-    from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose
-    from submodules.UsefulFileTools.FileOperator import check2create_dir
-
-    from models.SEMwithMEM import SMNet2D as Model
-    from utils.data_process import CDNet2014Dataset
-    from utils.transforms import IterativeCustomCompose
-    from utils.evaluate.losses import FocalLoss4CDNet2014 as Loss
-
-    from models.unet import *
-    from models.SEMwithMEM import *
-    from utils.evaluate.losses import *
-
-    # sys.argv = 'training.py --device 2 -epochs 2 --batch_size 8 -workers 1 -cv 5 -imghw 112-112 -use-t2val -out test'.split()
-
-    # sys.argv = "training.py --device 1 -epochs 0 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test -opt SGD --pretrain_weight out/1203-1703_SMNet2D(UNetVgg16-UNetVgg16)_Adam1.0e-04_FocalLoss_BS-9_Set-2_lastBack/bestAcc-F_score.pt".split()
-
-    # sys.argv = "training.py --device 1 -epochs 0 --batch_size 8 -workers 8 -cv 5 -imghw 224-224 -use-t2val -out test -opt SGD --pretrain_weight out/1203-1703_SMNet2D(UNetVgg16-UNetVgg16)_Adam1.0e-04_FocalLoss_BS-9_Set-2_lastBack/bestAcc-F_score.pt --do_testing".split()
-
-    # sys.argv = 'training.py --device 0 -epochs 2 --batch_size 24 -workers 8 -cv 5 -imghw 112-112 -use-t2val -out test'.split()
-
-    # sys.argv = 'training.py --device 2 -epochs 0 -workers 8 -cv 2 -imghw 224-224 -opt Adam --pretrain_weight out/1211-0348_bsuv.weight-decay.random.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2/bestAcc-F_score.pt -out result --do_testing'.split()
-
-    # sys.argv = 'training.py --device 1 -epochs 0 -workers 2 -cv 2 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/bestAcc-F_score.pt -out result --do_testing'.split()
-
-    # sys.argv = 'training.py --device 1 -epochs 200 --batch_size 27 -workers 8 -cv 2 -imghw 112-112 -use-t2val -opt Adam -out EmAsInp.112'.split()
-
-    parser = get_parser()
-
+def execute(parser: Parser):
     random.seed(42)
     torch.manual_seed(42)
     if torch.cuda.is_available():
@@ -510,7 +461,7 @@ if __name__ == '__main__':
     dataset_cfg = DatasetConfig()
     dataset_cfg.num_epochs = parser.NUM_EPOCHS
 
-    train_loader, val_loader, test_set = get_data_SetAndLoader(
+    train_loader, val_loader, test_set = get_data_LoadersAndSet(
         dataset_cfg=dataset_cfg,
         cv_set=parser.CV_SET,
         dataset_rate=parser.DATA_SPLIT_RATE,
@@ -521,6 +472,7 @@ if __name__ == '__main__':
         test_transforms_cpu=test_trans_cpu,
         label_isShadowFG=False,
         useTestAsVal=parser.useTestAsVal,
+        onlyTest=parser.NUM_EPOCHS == 0,
     )
 
     #! ========== Network ==========
@@ -532,17 +484,29 @@ if __name__ == '__main__':
 
     #! ========== Load Pretrain ==========
     if parser.PRETRAIN_WEIGHT != '':
-        sm_net, optimizer = DL_Model.load(parser.PRETRAIN_WEIGHT, sm_net, optimizer, device=parser.DEVICE)
+        sm_net, optimizer = Processor.load(parser.PRETRAIN_WEIGHT, sm_net, optimizer, device=parser.DEVICE)
 
     #! ========= Create saveDir ==========
-    parent_dir = 'out' if parser.PRETRAIN_WEIGHT == '' else parser.PRETRAIN_WEIGHT[: parser.PRETRAIN_WEIGHT.rfind('/')]
-    model_name = f'{sm_net.__class__.__name__}.{se_model.__class__.__name__}-{me_model.__class__.__name__}'
-    optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}'
-    saveDir = f'{parent_dir}/{time.strftime("%m%d-%H%M")}{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
+    split_id = parser.PRETRAIN_WEIGHT.rfind('/') + 1
+    saveDir = 'out' if parser.PRETRAIN_WEIGHT == '' else parser.PRETRAIN_WEIGHT[:split_id]
+    if parser.NUM_EPOCHS == 0 and parser.DO_TESTING:  # only testing
+        saveDir += f'{parser.OUT}_' if parser.OUT != '' else ''
+        path = Path(parser.PRETRAIN_WEIGHT)
+        if path.is_symlink():
+            saveDir += f'{parser.PRETRAIN_WEIGHT[split_id:].split("_")[0]}_'
+            path = str(path.readlink())
+        else:
+            path = parser.PRETRAIN_WEIGHT[split_id:]
+        saveDir += path.split('_')[0]
+    else:
+        model_name = f'{sm_net.__class__.__name__}.{se_model.__class__.__name__}-{me_model.__class__.__name__}'
+        optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}'
+        saveDir += f'{time.strftime("%m%d-%H%M")}_{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
+
     check2create_dir(saveDir)
 
     #! ========== Model Setting ==========
-    model_process = DL_Model(
+    processor = Processor(
         sm_net,
         optimizer,
         train_iter_compose,
@@ -555,11 +519,11 @@ if __name__ == '__main__':
     #! ========== Testing Evaluation ==========
     if parser.NUM_EPOCHS == 0 and parser.DO_TESTING:
         print(str_format("Testing Evaluate!!", fore='y'))
-        model_process.testing(saveDir, test_set)
+        processor.testing(saveDir, test_set)
         exit()
 
     #! ========== Training Process ==========
-    model_process.training(
+    processor.training(
         parser.NUM_EPOCHS,
         train_loader,
         val_loader,
@@ -568,3 +532,8 @@ if __name__ == '__main__':
         EARLY_STOP,
         CHECKPOINT,
     )
+
+
+if __name__ == '__main__':
+    parser = convertStr2Parser()
+    execute(parser)

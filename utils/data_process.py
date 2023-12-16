@@ -255,7 +255,7 @@ class CDNet2014Dataset(Dataset):
         return len(self.data_infos)
 
 
-def get_data_SetAndLoader(
+def get_data_LoadersAndSet(
     dataset_cfg: DatasetConfig = DatasetConfig(),
     cv_set: int = 1,
     dataset_rate=1.0,
@@ -265,9 +265,15 @@ def get_data_SetAndLoader(
     train_transforms_cpu: CustomCompose = None,
     test_transforms_cpu: transforms.Compose = None,
     label_isShadowFG: bool = False,
-    useTestAsVal=False,
+    useTestAsVal: bool = False,
+    onlyTest: bool = False,
     **kwargs,
 ):
+    test_set = CDNet2014Dataset(datasets_test, cv_set, dataset_cfg, test_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=False)
+
+    if onlyTest:
+        return None, None, test_set
+
     dataset = CDNet2014Dataset(datasets_tr, cv_set, dataset_cfg, train_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=True)
     train_len = int(len(dataset) * dataset_rate)
     train_set, val_set = random_split(dataset, [train_len, len(dataset) - train_len])
@@ -275,7 +281,6 @@ def get_data_SetAndLoader(
 
     val_loader = None
 
-    test_set = CDNet2014Dataset(datasets_test, cv_set, dataset_cfg, test_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=False)
     if useTestAsVal:
         test4val_transforms_cpu = CustomCompose(test_transforms_cpu.transforms)
         val_set = CDNet2014Dataset(
