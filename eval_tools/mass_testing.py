@@ -122,13 +122,13 @@ if __name__ == '__main__':
         'dev/EmAsInp': [
             'out/1214-2031_EmAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
-        'dev/EmAsInp.feaERD.1eEnNorm': [
+        'com/EmAsInp.feaERD.1eEnNorm': [
             'out/1215-1036_EmAsInp.feaERD.1eEnNorm_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
-        'EmAsInp.1eb': [
+        'com/EmAsInp.1eb': [
             'out/1215-1207_EmAsInp.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
-        'EmAsInp.feaERD.1eEnNorm.1eb': [
+        'com/EmAsInp.feaERD.1eEnNorm.1eb': [
             'out/1215-1230_EmAsInp.feaERD.1eEnNorm.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
     }
