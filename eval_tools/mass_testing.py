@@ -1,4 +1,4 @@
-import os, sys, subprocess, glob, ast, time
+import os, sys, subprocess, glob, time
 from typing import Dict, List
 from pathlib import Path
 
@@ -99,6 +99,15 @@ def get_standard_testDirName(pretrain_weight_path: str):
     return testDirName
 
 
+def merge_develop_branch(branch: str):
+    try:
+        subprocess.check_call(f'git checkout {branch}'.split())
+        subprocess.check_call(f'git merge --no-ff --no-commit develop'.split())
+    except subprocess.CalledProcessError as error_msg:
+        print(f"{str_format('[CalledProcessError]', fore='r')} {error_msg}")
+        exit()
+
+
 if __name__ == '__main__':
     task_dict = {
         'develop': [
@@ -163,6 +172,9 @@ if __name__ == '__main__':
 
     cross_val = 2
     gpu_provider = GPU_Provider([0, 2, 4, 5, 7], max_overlap=5)
+
+    for branch in task_dict.keys():
+        merge_develop_branch(branch)
 
     for branch, task_dirs in task_dict.items():
         if task_dirs == []:
