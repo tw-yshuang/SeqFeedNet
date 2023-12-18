@@ -14,11 +14,13 @@ class GPU_Provider:
         self.max_overlap = max_overlap
         self.delay_time = len(GPUS) * max_overlap * self.ONE_TEST_SPEND_TIME
         self.GPU_COUNT_DICT: Dict[int, int]
+        self.init_time: float
         self.init_gpus()
         self.__gpu = self.select_gpu()
 
     def init_gpus(self):
         self.GPU_COUNT_DICT = {gpu: 0 for gpu in self.GPUS}
+        self.init_time = time.time()
 
     def select_gpu(self):
         i = 0
@@ -27,19 +29,14 @@ class GPU_Provider:
         while True:
             gpu = self.GPUS[i % gpus_len]
             if self.GPU_COUNT_DICT[gpu] == self.max_overlap:
+                delay_time = self.delay_time - (time.time() - self.init_time)
                 print(
                     str_format(
-                        f"\n[{self.current_time_str}] Wait {self.delay_time / 3600:.1f} hr for GPU release computational power...",
-                        fore='y',
+                        f"\n[{self.current_time_str}] Wait {delay_time/ 3600:.1f} hr for GPU release computational power...", fore='y'
                     )
                 )
-                time.sleep(self.delay_time)
-                print(
-                    str_format(
-                        f"\n[{self.current_time_str}] GPU released computational power!!",
-                        fore='y',
-                    )
-                )
+                time.sleep(delay_time)
+                print(str_format(f"\n[{self.current_time_str}] GPU released computational power!!", fore='y'))
                 self.init_gpus()
 
             self.GPU_COUNT_DICT[gpu] += 1
