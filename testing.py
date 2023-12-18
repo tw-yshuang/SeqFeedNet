@@ -36,5 +36,5 @@ def cli(
 if __name__ == '__main__':
     # import sys
 
-    # sys.argv = 'testing.py --device 1 -cv 2 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/checkpoint_e170.pt'.split()
+    # sys.argv = 'testing.py --device 0 -cv 5 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/checkpoint_e170.pt -out test'.split()
     cli()
