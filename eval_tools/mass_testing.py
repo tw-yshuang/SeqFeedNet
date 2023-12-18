@@ -102,7 +102,7 @@ def get_standard_testDirName(pretrain_weight_path: str):
 def merge_develop_branch(branch: str):
     try:
         subprocess.check_call(f'git checkout {branch}'.split())
-        subprocess.check_call(f'git merge --no-ff --no-commit develop'.split())
+        subprocess.check_call(f'git merge --no-ff --no-edit develop'.split())
     except subprocess.CalledProcessError as error_msg:
         print(f"{str_format('[CalledProcessError]', fore='r')} {error_msg}")
         exit()
