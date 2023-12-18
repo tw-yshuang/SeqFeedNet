@@ -27,8 +27,19 @@ class GPU_Provider:
         while True:
             gpu = self.GPUS[i % gpus_len]
             if self.GPU_COUNT_DICT[gpu] == self.max_overlap:
-                print(str_format(f"Wait {self.delay_time / 3600:.1f} hr for GPU release computational power...", fore='y'))
+                print(
+                    str_format(
+                        f"\n[{self.current_time_str}] Wait {self.delay_time / 3600:.1f} hr for GPU release computational power...",
+                        fore='y',
+                    )
+                )
                 time.sleep(self.delay_time)
+                print(
+                    str_format(
+                        f"\n[{self.current_time_str}] GPU released computational power!!",
+                        fore='y',
+                    )
+                )
                 self.init_gpus()
 
             self.GPU_COUNT_DICT[gpu] += 1
@@ -37,6 +48,10 @@ class GPU_Provider:
 
     def get(self):
         return next(self.__gpu)
+
+    @property
+    def current_time_str(self):
+        return time.strftime('%Y%m%d %H:%M', time.localtime())
 
 
 def batch_testing4weights(task_dir: str, weight_tags: List[str], cross_validation: int, gpu_provider: GPU_Provider) -> bool:
