@@ -59,8 +59,8 @@ def batch_testing4weights(task_dir: str, weight_tags: List[str], cross_validatio
     print(str_format(f"start testing directory: {task_dir}", fore='g'))
 
     filenames = sorted(map(os.path.basename, glob.glob(f'{task_dir}/*.pt')), key=len)
-    max_len = len(filenames[-1])
     filenames = [filename for filename in filenames if len(filename) < max_len - 5]
+    max_len = len(filenames[-1])
 
     for weight_tag in weight_tags:
         weight_tag_info = weight_tag.split('_')
@@ -107,32 +107,32 @@ if __name__ == '__main__':
         'develop': [
             'out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
+        'dev/label2bg': [
+            'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'dev/dataset-em,1ref,1diff': [
+            'out/1211-1611_feaERD.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'dev/1epochBackward': [
+            'out/1211-1614_1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
+        ],
+        'dev/feaERD.1eEnNorm': [
+            'out/1211-1617_feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'com/feaERD.label2bg': [
+            'out/1211-1626_feaERD.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'dev/label2bgRandom': [
+            'out/1211-1604_label2bgRandom.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
         'com/1eb.label2bg': [
             'out/1211-1632_1eb.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
         ],
         'com/feaERD.1eb.label2bg': [
             'out/1211-1636_feaERD.1eb.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
         ],
-        'com/feaERD.label2bg': [
-            'out/1211-1626_feaERD.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/1epochBackward': [
-            'out/1211-1614_1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
-        ],
         'dev/RecAsInp': [
             'out/1211-1621_RecAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/dataset-em,1ref,1diff': [
-            'out/1211-1611_feaERD.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/feaERD.1eEnNorm': [
-            'out/1211-1617_feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/label2bg': [
-            'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/label2bgRandom': [
-            'out/1211-1604_label2bgRandom.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
         'dev/EmAsInp': [
             'out/1214-2031_EmAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
