@@ -1,4 +1,4 @@
-import os, sys, subprocess, glob, ast, time
+import os, sys, subprocess, glob, time
 from typing import Dict, List
 from pathlib import Path
 
@@ -14,11 +14,13 @@ class GPU_Provider:
         self.max_overlap = max_overlap
         self.delay_time = len(GPUS) * max_overlap * self.ONE_TEST_SPEND_TIME
         self.GPU_COUNT_DICT: Dict[int, int]
+        self.init_time: float
         self.init_gpus()
         self.__gpu = self.select_gpu()
 
     def init_gpus(self):
         self.GPU_COUNT_DICT = {gpu: 0 for gpu in self.GPUS}
+        self.init_time = time.time()
 
     def select_gpu(self):
         i = 0
@@ -27,8 +29,14 @@ class GPU_Provider:
         while True:
             gpu = self.GPUS[i % gpus_len]
             if self.GPU_COUNT_DICT[gpu] == self.max_overlap:
-                print(str_format(f"Wait {self.delay_time / 3600:.1f} hr for GPU release computational power...", fore='y'))
-                time.sleep(self.delay_time)
+                delay_time = self.delay_time - (time.time() - self.init_time)
+                print(
+                    str_format(
+                        f"\n[{self.current_time_str}] Wait {delay_time/ 3600:.1f} hr for GPU release computational power...", fore='y'
+                    )
+                )
+                time.sleep(delay_time)
+                print(str_format(f"\n[{self.current_time_str}] GPU released computational power!!", fore='y'))
                 self.init_gpus()
 
             self.GPU_COUNT_DICT[gpu] += 1
@@ -38,14 +46,18 @@ class GPU_Provider:
     def get(self):
         return next(self.__gpu)
 
+    @property
+    def current_time_str(self):
+        return time.strftime('%Y%m%d %H:%M', time.localtime())
+
 
 def batch_testing4weights(task_dir: str, weight_tags: List[str], cross_validation: int, gpu_provider: GPU_Provider) -> bool:
     isExecute = False
     print(str_format(f"start testing directory: {task_dir}", fore='g'))
 
     filenames = sorted(map(os.path.basename, glob.glob(f'{task_dir}/*.pt')), key=len)
-    max_len = len(filenames[-1])
     filenames = [filename for filename in filenames if len(filename) < max_len - 5]
+    max_len = len(filenames[-1])
 
     for weight_tag in weight_tags:
         weight_tag_info = weight_tag.split('_')
@@ -87,10 +99,37 @@ def get_standard_testDirName(pretrain_weight_path: str):
     return testDirName
 
 
+def merge_develop_branch(branch: str):
+    try:
+        subprocess.check_call(f'git checkout {branch}'.split())
+        subprocess.check_call(f'git merge --no-ff --no-edit develop'.split())
+    except subprocess.CalledProcessError as error_msg:
+        print(f"{str_format('[CalledProcessError]', fore='r')} {error_msg}")
+        exit()
+
+
 if __name__ == '__main__':
     task_dict = {
         'develop': [
             'out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'dev/label2bg': [
+            'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'dev/dataset-em,1ref,1diff': [
+            'out/1211-1611_feaERD.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'dev/1epochBackward': [
+            'out/1211-1614_1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
+        ],
+        'dev/feaERD.1eEnNorm': [
+            'out/1211-1617_feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'com/feaERD.label2bg': [
+            'out/1211-1626_feaERD.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+        ],
+        'dev/label2bgRandom': [
+            'out/1211-1604_label2bgRandom.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
         'com/1eb.label2bg': [
             'out/1211-1632_1eb.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
@@ -98,37 +137,19 @@ if __name__ == '__main__':
         'com/feaERD.1eb.label2bg': [
             'out/1211-1636_feaERD.1eb.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
         ],
-        'com/feaERD.label2bg': [
-            'out/1211-1626_feaERD.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/1epochBackward': [
-            'out/1211-1614_1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
-        ],
         'dev/RecAsInp': [
             'out/1211-1621_RecAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/dataset-em,1ref,1diff': [
-            'out/1211-1611_feaERD.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/feaERD.1eEnNorm': [
-            'out/1211-1617_feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/label2bg': [
-            'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-        ],
-        'dev/label2bgRandom': [
-            'out/1211-1604_label2bgRandom.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
         'dev/EmAsInp': [
             'out/1214-2031_EmAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
-        'dev/EmAsInp.feaERD.1eEnNorm': [
+        'com/EmAsInp.feaERD.1eEnNorm': [
             'out/1215-1036_EmAsInp.feaERD.1eEnNorm_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
-        'EmAsInp.1eb': [
+        'com/EmAsInp.1eb': [
             'out/1215-1207_EmAsInp.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
-        'EmAsInp.feaERD.1eEnNorm.1eb': [
+        'com/EmAsInp.feaERD.1eEnNorm.1eb': [
             'out/1215-1230_EmAsInp.feaERD.1eEnNorm.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
     }
@@ -151,6 +172,9 @@ if __name__ == '__main__':
 
     cross_val = 2
     gpu_provider = GPU_Provider([0, 2, 4, 5, 7], max_overlap=5)
+
+    for branch in task_dict.keys():
+        merge_develop_branch(branch)
 
     for branch, task_dirs in task_dict.items():
         if task_dirs == []:
