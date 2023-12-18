@@ -490,7 +490,7 @@ def execute(parser: Parser):
 
     #! ========= Create saveDir ==========
     split_id = parser.PRETRAIN_WEIGHT.rfind('/') + 1
-    saveDir = 'out' if parser.PRETRAIN_WEIGHT == '' else parser.PRETRAIN_WEIGHT[:split_id]
+    saveDir = 'out/' if parser.PRETRAIN_WEIGHT == '' else parser.PRETRAIN_WEIGHT[:split_id]
     if parser.NUM_EPOCHS == 0 and parser.DO_TESTING:  # only testing
         saveDir += f'{parser.OUT}_' if parser.OUT != '' else ''
         path = Path(parser.PRETRAIN_WEIGHT)
