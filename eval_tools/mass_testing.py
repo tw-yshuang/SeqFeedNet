@@ -56,8 +56,8 @@ def batch_testing4weights(task_dir: str, weight_tags: List[str], cross_validatio
     print(str_format(f"start testing directory: {task_dir}", fore='g'))
 
     filenames = sorted(map(os.path.basename, glob.glob(f'{task_dir}/*.pt')), key=len)
-    filenames = [filename for filename in filenames if len(filename) < max_len - 5]
     max_len = len(filenames[-1])
+    filenames = [filename for filename in filenames if len(filename) < max_len - 5]
 
     for weight_tag in weight_tags:
         weight_tag_info = weight_tag.split('_')
