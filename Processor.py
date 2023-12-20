@@ -258,25 +258,25 @@ class Processor:
         video_id: torch.IntTensor
         features: torch.Tensor
         frames: torch.Tensor
-        rec_frames: torch.Tensor
+        empty_frames: torch.Tensor
         labels: torch.Tensor
-        for video_id, frames, rec_frames, labels, features in tqdm(loader):
+        for video_id, frames, empty_frames, labels, features in tqdm(loader):
             video_id = video_id.to(self.device).unsqueeze(1)
             features = features.to(self.device)
             frames = frames.to(self.device)
-            rec_frames = rec_frames.to(self.device)
+            empty_frames = empty_frames.to(self.device)
             labels = labels.to(self.device)
 
             with torch.no_grad():
-                frames, rec_frames, labels, features = transforms(frames, rec_frames, labels, features)
+                frames, empty_frames, labels, features = transforms(frames, empty_frames, labels, features)
 
             bg_only_imgs = features[:, 0].unsqueeze(1)
             features = self.model.erd_model(features)
             for step in range(frames.shape[1]):
-                frame, rec_frame, label = frames[:, step], rec_frames[:, step], labels[:, step]
+                frame, empty_frame, label = frames[:, step], empty_frames[:, step], labels[:, step]
 
                 features = features.detach()  # create a new tensor to detach previous computational graph
-                pred, frame, features = self.model(frame, rec_frame, features, bg_only_imgs)
+                pred, frame, features = self.model(frame, empty_frame, features, bg_only_imgs)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
                 if isTrain:
