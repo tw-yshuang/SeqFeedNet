@@ -188,7 +188,7 @@ class CDNet2014Dataset(Dataset):
         label_ls = []
         for i in frame_ids:
             frame_ls.append(read_image(video.inputPaths_inROI[i])[[2, 1, 0]])
-            label_ls.append(self.preprocess(read_image(video.gtPaths_inROI[i])).unsqueeze(0))
+            label_ls.append(self.preprocess(read_image(video.gtPaths_inROI[i])))
 
         frames = torch.stack(frame_ls).type(torch.float32) / 255.0
         labels = torch.stack(label_ls)
@@ -200,7 +200,7 @@ class CDNet2014Dataset(Dataset):
     def __getitem4testIter(self, video: CDNet2014OneVideo):
         for input_path, gt_path in zip(video.inputPaths_inROI, video.gtPaths_inROI):
             frame = read_image(input_path)[[2, 1, 0]].unsqueeze(0).type(torch.float32) / 255.0  # RGB2BGR
-            label = self.preprocess(read_image(gt_path))[(None,) * 2]  # expand_dim at the first 2 times
+            label = self.preprocess(read_image(gt_path)).unsqueeze(0)  # expand_dim at the first 2 times
             yield self.transforms_cpu(frame), self.transforms_cpu(label)
 
     # *dataset selecting strategy
