@@ -1,9 +1,9 @@
 import os, sys, subprocess, glob, time
-from typing import Dict, List
+from typing import List
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from submodules.UsefulFileTools.FileOperator import get_filenames, str_format
+from submodules.UsefulFileTools.FileOperator import str_format
 
 
 class GPU_Provider:
@@ -12,15 +12,23 @@ class GPU_Provider:
     def __init__(self, GPUS: List[int], max_overlap: int = 5) -> None:
         self.GPUS = GPUS
         self.max_overlap = max_overlap
-        self.delay_time = len(GPUS) * max_overlap * self.ONE_TEST_SPEND_TIME
-        self.GPU_COUNT_DICT: Dict[int, int]
-        self.init_time: float
-        self.init_gpus()
+        self.delay_time = self.ONE_TEST_SPEND_TIME
+        self.GPU_COUNT_DICT = {gpu: 0 for gpu in self.GPUS}
         self.__gpu = self.select_gpu()
 
-    def init_gpus(self):
-        self.GPU_COUNT_DICT = {gpu: 0 for gpu in self.GPUS}
-        self.init_time = time.time()
+    def get_num_testing_in_OneGPU(self, gpu_id: int):
+        self.GPU_COUNT_DICT[gpu_id] = len(
+            subprocess.run(
+                f"nvitop -1 --only {gpu_id} | grep -o 'testing'",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                encoding='utf-8',
+                timeout=30,
+                shell=True,
+                text=True,
+            ).stdout.split()
+        )
+        return self.GPU_COUNT_DICT[gpu_id]
 
     def select_gpu(self):
         i = 0
@@ -28,16 +36,14 @@ class GPU_Provider:
 
         while True:
             gpu = self.GPUS[i % gpus_len]
-            if self.GPU_COUNT_DICT[gpu] == self.max_overlap:
-                delay_time = self.delay_time - (time.time() - self.init_time)
-                print(
-                    str_format(
-                        f"\n[{self.current_time_str}] Wait {delay_time/ 3600:.1f} hr for GPU release computational power...", fore='y'
-                    )
-                )
-                time.sleep(delay_time)
-                print(str_format(f"\n[{self.current_time_str}] GPU released computational power!!", fore='y'))
-                self.init_gpus()
+            while self.GPU_COUNT_DICT[gpu] >= self.max_overlap:
+                time.sleep(5 * 60)  # process deploy to the GPU needs times
+                if all([self.get_num_testing_in_OneGPU(gpu_id) >= self.max_overlap for gpu_id in self.GPUS]):
+                    print(str_format(f"\n[{self.current_time_str}] Wait {self.delay_time / 60:.1f} mins for GPU release!!", fore='y'))
+                    time.sleep(self.delay_time)
+                else:
+                    i += 1
+                    gpu = self.GPUS[i % gpus_len]
 
             self.GPU_COUNT_DICT[gpu] += 1
             i += 1
@@ -113,6 +119,13 @@ if __name__ == '__main__':
         'develop': [
             'out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
+        'dev/BSUVNet-noFPM': [
+            'out/1211-0348_bsuv.weight-decay.random.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+            'out/1211-0325_bsuv.weight-decay.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+            'out/1219-0254_bsuv.random.224.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+            'out/1219-0255_bsuv.random.224.bs9_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-9_Set-2',
+            'out/1219-1612_bsuv.random.112.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+        ],
         'dev/label2bg': [
             'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
@@ -151,6 +164,9 @@ if __name__ == '__main__':
         ],
         'com/EmAsInp.feaERD.1eEnNorm.1eb': [
             'out/1215-1230_EmAsInp.feaERD.1eEnNorm.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+            'out/1219-0240_EmAsInp.feaERD.1eEnNorm.1eb.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
+            # 'out/1219-0301_EmAsInp.feaERD.1eEnNorm.1eb.112.noWeightDecay_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
+            'out/1219-1621_EmAsInp.feaERD.1eEnNorm.1eb.112.noWeightDecay.maxGAP100_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
         ],
     }
 
@@ -171,7 +187,7 @@ if __name__ == '__main__':
     ]
 
     cross_val = 2
-    gpu_provider = GPU_Provider([0, 2, 4, 5, 7], max_overlap=5)
+    gpu_provider = GPU_Provider([2, 5], max_overlap=7)
 
     for branch in task_dict.keys():
         merge_develop_branch(branch)
