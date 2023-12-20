@@ -8,6 +8,7 @@ import torch
 from numpy.typing import NDArray
 from torch.utils.data import Dataset, DataLoader, random_split
 from torchvision import transforms
+from torchvision.io import read_image
 
 if __name__ == '__main__':
     import sys
@@ -174,7 +175,7 @@ class CDNet2014Dataset(Dataset):
         labels: torch.Tensor
 
         cate, video, frame_id = self.data_infos[idx]
-        features = torch.from_numpy(self.__get_features(video, frame_id).transpose(0, 3, 1, 2)).type(torch.float32) / 255
+        features = self.__get_features(video, frame_id).type(torch.float32) / 255
 
         if not self.isTrain:
             # ! test_dataset can use this, but test_loader can not use.
@@ -186,11 +187,11 @@ class CDNet2014Dataset(Dataset):
         frame_ls = []
         label_ls = []
         for i in frame_ids:
-            frame_ls.append(cv2.imread(video.inputPaths_inROI[i]))
-            label_ls.append(np.expand_dims(self.preprocess(cv2.imread(video.gtPaths_inROI[i], cv2.IMREAD_GRAYSCALE)), axis=-1))
+            frame_ls.append(read_image(video.inputPaths_inROI[i])[[2, 1, 0]])
+            label_ls.append(self.preprocess(read_image(video.gtPaths_inROI[i])).unsqueeze(0))
 
-        frames = torch.from_numpy(np.stack(frame_ls).transpose(0, 3, 1, 2)).type(torch.float32) / 255.0
-        labels = torch.from_numpy(np.stack(label_ls).transpose(0, 3, 1, 2))
+        frames = torch.stack(frame_ls).type(torch.float32) / 255.0
+        labels = torch.stack(label_ls)
         features[-1] = features[1] - frames[0]
 
         # * video_info, features, frames, labels
@@ -198,9 +199,8 @@ class CDNet2014Dataset(Dataset):
 
     def __getitem4testIter(self, video: CDNet2014OneVideo):
         for input_path, gt_path in zip(video.inputPaths_inROI, video.gtPaths_inROI):
-            frame = cv2.imread(input_path).transpose(2, 0, 1)
-            frame = torch.from_numpy(np.expand_dims(frame, axis=0)).type(torch.float32) / 255.0
-            label = torch.from_numpy(np.expand_dims(self.preprocess(cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)), axis=(0, 1)))
+            frame = read_image(input_path)[[2, 1, 0]].unsqueeze(0).type(torch.float32) / 255.0  # RGB2BGR
+            label = self.preprocess(read_image(gt_path))[(None,) * 2]  # expand_dim at the first 2 times
             yield self.transforms_cpu(frame), self.transforms_cpu(label)
 
     # *dataset selecting strategy
@@ -221,13 +221,13 @@ class CDNet2014Dataset(Dataset):
 
     def __get_features(self, video: CDNet2014OneVideo, frame_id: int, mean=0, std=128):
         if video.id // 10 == CAT2ID['PTZ']:
-            f0 = cv2.imread(video.emptyBgPaths[len(video.inputPaths_beforeROI) + frame_id])
+            f0 = read_image(video.emptyBgPaths[len(video.inputPaths_beforeROI) + frame_id])[[2, 1, 0]]  # RGB2BGR
         else:
-            f0 = cv2.imread(random.choice(video.emptyBgPaths))
-        f1 = cv2.imread(video.recentBgPaths_inROI[frame_id])
-        f2 = cv2.imread(video.inputPaths_inROI[frame_id])
+            f0 = read_image(random.choice(video.emptyBgPaths))[[2, 1, 0]]  # RGB2BGR
+        f1 = read_image(video.recentBgPaths_inROI[frame_id])[[2, 1, 0]]  # RGB2BGR
+        f2 = read_image(video.inputPaths_inROI[frame_id])[[2, 1, 0]]  # RGB2BGR
 
-        return np.stack([f0, f1, f2])
+        return torch.stack([f0, f1, f2])
 
     @classmethod
     def update_frame_gap(cls, epoch: int = 1):
