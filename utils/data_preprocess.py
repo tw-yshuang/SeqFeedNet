@@ -1,6 +1,10 @@
 from typing import Tuple
+
 import numpy as np
 import cv2
+import torch
+from torchvision.transforms import functional as TF
+from torchvision.transforms import InterpolationMode
 
 
 class CDNet2014Preprocess:
@@ -17,12 +21,13 @@ class CDNet2014Preprocess:
         self.isShadowFG = isShadowFG
         self.eps = eps
 
-    def __call__(self, gt: np.ndarray) -> np.ndarray:
-        label = np.float32(gt if self.image_size == None else cv2.resize(gt, dsize=self.image_size, interpolation=cv2.INTER_NEAREST))
+    def __call__(self, gt: torch.Tensor) -> torch.Tensor:
+        label = gt if self.image_size == None else TF.resize(gt, self.image_size, InterpolationMode.NEAREST)
+        label = label.type(torch.float32)
 
         label[label < self.PXL_VAL_SHADOW - self.eps] = 0.0
         if self.isShadowFG:
-            label[np.where((label <= self.PXL_VAL_SHADOW + self.eps) & (label >= self.PXL_VAL_SHADOW - self.eps))] = 1.0
+            label[torch.where((label <= self.PXL_VAL_SHADOW + self.eps) & (label >= self.PXL_VAL_SHADOW - self.eps))] = 1.0
 
         label[label > self.PXL_VAL_MOVING - self.eps] = 1.0
         label[label > 1.0] = -1.0
@@ -73,6 +78,8 @@ if __name__ == '__main__':
     import sys
     from pathlib import Path
 
+    from torchvision.io import read_image, write_png
+
     PROJECT_DIR = Path(__file__).resolve().parents[1]
     sys.path.append(str(PROJECT_DIR))
 
@@ -85,11 +92,11 @@ if __name__ == '__main__':
     data_processes = CDNet2014Preprocess(image_size=(244, 244), isShadowFG=True, eps=3)  # all pass
     for i, filename in enumerate([filenames[9842], filenames[26842], filenames[65697], filenames[115181], filenames[125681]]):
         print(filename)
-        img = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
+        img = read_image(filename)
         print(img.shape, end=' ')
         convert_img = data_processes(img)
-        print(np.any(convert_img == 0.0), np.any(convert_img == 1.0), np.any(convert_img == -1.0))
+        print(torch.any(convert_img == 0.0), torch.any(convert_img == 1.0), torch.any(convert_img == -1.0))
         convert_img[convert_img == -1] = 127
         convert_img[convert_img == 1] = 255
-        cv2.imwrite(f'out/test/original_{i}.png', img)
-        cv2.imwrite(f'out/test/convert_{i}.png', convert_img)
+        write_png(img, f'test/original_{i}.png')
+        write_png(convert_img.type(torch.uint8), f'test/convert_{i}.png')
