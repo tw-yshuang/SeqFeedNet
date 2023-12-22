@@ -125,6 +125,8 @@ if __name__ == '__main__':
             'out/1219-0254_bsuv.random.224.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
             'out/1219-0255_bsuv.random.224.bs9_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-9_Set-2',
             'out/1219-1612_bsuv.random.112.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+            'out/1220-0307_bsuv.random.112.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+            'out/1220-0307_bsuv.random.112.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
         ],
         'dev/label2bg': [
             'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
@@ -165,7 +167,7 @@ if __name__ == '__main__':
         'com/EmAsInp.feaERD.1eEnNorm.1eb': [
             'out/1215-1230_EmAsInp.feaERD.1eEnNorm.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
             'out/1219-0240_EmAsInp.feaERD.1eEnNorm.1eb.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
-            # 'out/1219-0301_EmAsInp.feaERD.1eEnNorm.1eb.112.noWeightDecay_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
+            'out/1219-0301_EmAsInp.feaERD.1eEnNorm.1eb.112.noWeightDecay_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
             'out/1219-1621_EmAsInp.feaERD.1eEnNorm.1eb.112.noWeightDecay.maxGAP100_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
         ],
     }
@@ -187,7 +189,7 @@ if __name__ == '__main__':
     ]
 
     cross_val = 2
-    gpu_provider = GPU_Provider([2, 5], max_overlap=7)
+    gpu_provider = GPU_Provider([0], max_overlap=1)
 
     for branch in task_dict.keys():
         merge_develop_branch(branch)

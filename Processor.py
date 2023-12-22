@@ -345,6 +345,7 @@ def convertStr2Parser(
     loss_func: str = 'IOULoss4CDNet2014',
     optimizer: str = 'Adam',
     learning_rate: float = 1e-4,
+    weight_decay: float = 0,
     num_epochs: int = 0,
     batch_size: int = 8,
     num_workers: int = 1,
@@ -365,6 +366,7 @@ def convertStr2Parser(
         loss_func: "Please check utils/evaluate/losses.py to find others",
         optimizer: "Optimizer that provide by Pytorch",
         learning_rate: "Learning Rate for optimizer",
+        weight_decay: "Weight Decay for optimizer"
         num_epochs: "Number of epochs",
         batch_size: "Number of batch_size",
         num_workers: "Number of workers for data processing",
@@ -395,6 +397,7 @@ def convertStr2Parser(
     parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
     parser.OPTIMIZER: optim = getattr(optim, optimizer)
     parser.LEARNING_RATE = learning_rate
+    parser.WEIGHT_DECAY = weight_decay
     parser.NUM_EPOCHS = num_epochs
     parser.BATCH_SIZE = batch_size
 
@@ -474,7 +477,7 @@ def execute(parser: Parser):
     se_model: nn.Module = parser.SE_Net(12, 9)
     me_model: nn.Module = parser.ME_Net(12, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
-    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=1e-2)
+    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=parser.WEIGHT_DECAY)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
 
     #! ========== Load Pretrain ==========

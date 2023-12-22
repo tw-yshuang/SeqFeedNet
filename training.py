@@ -7,6 +7,7 @@ help_doc = {
     'loss_func': "Please check utils/evaluate/losses.py to find others",
     'optimizer': "Optimizer that provide by Pytorch",
     'learning_rate': "Learning Rate for optimizer",
+    'weight_decay': "Weight Decay for optimizer",
     'num_epochs': "Number of epochs",
     'batch_size': "Number of batch_size",
     'num_workers': "Number of workers for data processing",
@@ -28,6 +29,7 @@ help_doc = {
 @click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help=help_doc['loss_func'])
 @click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
 @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
+@click.option('-wd', '--weight_decay', default=0, help=help_doc['weight_decay'])
 @click.option('-epochs', '--num_epochs', default=0, help=help_doc['num_epochs'])
 @click.option('-bs', '--batch_size', default=8, help=help_doc['batch_size'])
 @click.option('-workers', '--num_workers', default=1, help=help_doc['num_workers'])
@@ -46,6 +48,7 @@ def cli(
     loss_func: str,
     optimizer: str,
     learning_rate: float,
+    weight_decay: float,
     num_epochs: int,
     batch_size: int,
     num_workers: int,
@@ -67,6 +70,7 @@ def cli(
         loss_func,
         optimizer,
         learning_rate,
+        weight_decay,
         num_epochs,
         batch_size,
         num_workers,
