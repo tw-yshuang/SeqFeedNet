@@ -477,7 +477,7 @@ def execute(parser: Parser):
     se_model: nn.Module = parser.SE_Net(9, 6)
     me_model: nn.Module = parser.ME_Net(9, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
-    optimizer: optim = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=parser.WEIGHT_DECAY)
+    optimizer: optim.Optimizer = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=parser.WEIGHT_DECAY)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
 
     #! ========== Load Pretrain ==========
@@ -498,7 +498,7 @@ def execute(parser: Parser):
         saveDir += path.split('_')[0]
     else:
         model_name = f'{sm_net.__class__.__name__}.{se_model.__class__.__name__}-{me_model.__class__.__name__}'
-        optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}'
+        optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}.{parser.WEIGHT_DECAY:.1e}'
         saveDir += f'{time.strftime("%m%d-%H%M")}_{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
 
     check2create_dir(saveDir)
