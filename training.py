@@ -29,7 +29,7 @@ help_doc = {
 @click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help=help_doc['loss_func'])
 @click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
 @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
-@click.option('-wd', '--weight_decay', default=0, help=help_doc['weight_decay'])
+@click.option('-wd', '--weight_decay', default=0.0, help=help_doc['weight_decay'])
 @click.option('-epochs', '--num_epochs', default=0, help=help_doc['num_epochs'])
 @click.option('-bs', '--batch_size', default=8, help=help_doc['batch_size'])
 @click.option('-workers', '--num_workers', default=1, help=help_doc['num_workers'])
