@@ -227,7 +227,7 @@ class CDNet2014Dataset(Dataset):
         f1 = read_image(video.recentBgPaths_inROI[frame_id])[[2, 1, 0]]  # RGB2BGR
         f2 = read_image(video.inputPaths_inROI[frame_id])[[2, 1, 0]]  # RGB2BGR
 
-        return torch.stack([f0, f1, f2])
+        return torch.stack([f0, f1, f1 - f2])
 
     @classmethod
     def update_frame_gap(cls, epoch: int = 1):
