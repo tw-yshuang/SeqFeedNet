@@ -305,7 +305,7 @@ class Processor:
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
         pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
-        bg_only_imgs = frame * (1 - pred_mask)
+        bg_only_imgs = frame * (1 - pred)
         return bg_only_imgs, pred_mask
 
     def save(self, model: Model | nn.Module, path: str, isFull: bool = False):
