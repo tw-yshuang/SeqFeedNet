@@ -274,18 +274,19 @@ class Processor:
             features = self.model.erd_model(features)
             # losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
             for step in range(frames.shape[1]):
+                isDetachMEM = step != frames.shape[1]
                 frame, empty_frame, label = frames[:, step], empty_frames[:, step], labels[:, step]
 
                 # features = features.detach()  # create a new tensor to detach previous computational graph
-                pred, frame, features = self.model(frame, empty_frame, features, bg_only_imgs)
+                pred: torch.Tensor
+                frame: torch.Tensor
+                pred, frame, features = self.model(frame, empty_frame, features, bg_only_imgs, isDetachMEM)
                 loss: torch.Tensor = self.loss_func(pred, label)
 
-                # losses[step] = loss
-
-                # if isTrain:
-                #     loss.backward()
-                #     self.optimizer.step()
-                #     self.optimizer.zero_grad()
+                if isTrain:
+                    loss.backward()
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
 
                 with torch.no_grad():
                     if isTrain:
@@ -295,13 +296,6 @@ class Processor:
                         bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.batchLevel_matrix[-2] += loss.item()  # batchLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
-
-            if isTrain:
-                # losses.sum().backward()
-                loss.backward()
-                # losses.backward()
-                self.optimizer.step()
-                self.optimizer.zero_grad()
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
         pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)

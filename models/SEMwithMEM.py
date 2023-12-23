@@ -31,7 +31,14 @@ class SMNet2D(nn.Module):
         self.se_model = se_model
         self.me_model = me_model
 
-    def forward(self, frame: torch.Tensor, empty_frame: torch.Tensor, features: torch.Tensor, bg_only_imgs: torch.Tensor):
+    def forward(
+        self,
+        frame: torch.Tensor,
+        empty_frame: torch.Tensor,
+        features: torch.Tensor,
+        bg_only_imgs: torch.Tensor,
+        isDetachMEM: bool = False,
+    ):
         frame = frame.squeeze(1)
         empty_frame = empty_frame.squeeze(1)
 
@@ -45,7 +52,7 @@ class SMNet2D(nn.Module):
 
         features = self.se_model(combine_features)
 
-        mask = self.me_model(torch.hstack((features, frame, empty_frame)))
+        mask = self.me_model(torch.hstack((features.detach() if isDetachMEM else features, frame, empty_frame)))
 
         return mask, frame, features
 
