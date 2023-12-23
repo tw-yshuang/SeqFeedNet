@@ -273,8 +273,9 @@ class Processor:
             bg_only_imgs = features[:, 0].unsqueeze(1)
             features = self.model.erd_model(features)
             # losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
+            step_noDetachMEM = frames.shape[1] - 1
             for step in range(frames.shape[1]):
-                isDetachMEM = step != frames.shape[1]
+                isDetachMEM = 1 - (step // step_noDetachMEM)
                 frame, empty_frame, label = frames[:, step], empty_frames[:, step], labels[:, step]
 
                 # features = features.detach()  # create a new tensor to detach previous computational graph
