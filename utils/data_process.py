@@ -195,8 +195,8 @@ class CDNet2014Dataset(Dataset):
         empty_ls = []
         label_ls = []
         for i, idx in enumerate(frame_ids):
-            frame_ls.append(read_image(video.inputPaths_inROI[idx])[[2, 1, 0]])
-            empty_ls.append(read_image(emptyBg4InputPaths[i])[[2, 1, 0]])
+            frame_ls.append(read_image(video.inputPaths_inROI[idx]))
+            empty_ls.append(read_image(emptyBg4InputPaths[i]))
             label_ls.append(self.preprocess(read_image(video.gtPaths_inROI[idx])))
 
         frames = torch.stack(frame_ls).type(torch.float32) / 255.0
@@ -214,8 +214,8 @@ class CDNet2014Dataset(Dataset):
             emptyBg4InputPaths = video.emptyBgPaths[len(video.inputPaths_beforeROI) :]
 
         for input_path, empty_path, gt_path in zip(video.inputPaths_inROI, emptyBg4InputPaths, video.gtPaths_inROI):
-            frame = read_image(input_path)[[2, 1, 0]].unsqueeze(0).type(torch.float32) / 255.0  # RGB2BGR
-            empty = read_image(empty_path)[[2, 1, 0]].unsqueeze(0).type(torch.float32) / 255.0  # RGB2BGR
+            frame = read_image(input_path).unsqueeze(0).type(torch.float32) / 255.0
+            empty = read_image(empty_path).unsqueeze(0).type(torch.float32) / 255.0
             label = self.preprocess(read_image(gt_path)).unsqueeze(0)
             yield self.transforms_cpu(frame), self.transforms_cpu(empty), self.transforms_cpu(label)
 
@@ -237,11 +237,11 @@ class CDNet2014Dataset(Dataset):
 
     def __get_features(self, video: CDNet2014OneVideo, frame_id: int, mean=0, std=128):
         if video.id // 10 == CAT2ID['PTZ']:
-            f0 = read_image(video.emptyBgPaths[len(video.inputPaths_beforeROI) + frame_id])[[2, 1, 0]]  # RGB2BGR
+            f0 = read_image(video.emptyBgPaths[len(video.inputPaths_beforeROI) + frame_id])
         else:
-            f0 = read_image(random.choice(video.emptyBgPaths))[[2, 1, 0]]  # RGB2BGR
-        f1 = read_image(video.recentBgPaths_inROI[frame_id])[[2, 1, 0]]  # RGB2BGR
-        f2 = read_image(video.inputPaths_inROI[frame_id])[[2, 1, 0]]  # RGB2BGR
+            f0 = read_image(random.choice(video.emptyBgPaths))
+        f1 = read_image(video.recentBgPaths_inROI[frame_id])
+        f2 = read_image(video.inputPaths_inROI[frame_id])
 
         return torch.stack([f0, f1, f1 - f2])
 

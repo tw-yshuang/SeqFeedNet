@@ -450,22 +450,20 @@ def execute(parser: Parser):
     #! ========== Augmentation ==========
     train_trans_cpu = CustomCompose(
         [
-            # transforms.ToTensor(), # already converted in the __getitem__()
             transforms.RandomChoice(
                 [
                     RandomCrop(crop_size=parser.SIZE_HW, p=1.0),
                     # RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
                 ]
             ),
-            transforms.Normalize(mean=[0.406, 0.456, 0.485], std=[0.225, 0.224, 0.229]),  # BGR
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 
     test_trans_cpu = transforms.Compose(
         [
-            # transforms.ToTensor(), # already converted in the __getitem__()
             transforms.Resize(parser.SIZE_HW, antialias=True),
-            transforms.Normalize(mean=[0.406, 0.456, 0.485], std=[0.225, 0.224, 0.229]),  # BGR
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 
