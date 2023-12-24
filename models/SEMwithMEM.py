@@ -1,12 +1,6 @@
 import torch
 import torch.nn as nn
 
-if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-
 
 class StandardNorm(nn.Module):
     def __init__(self, noise_rate=1e-4, dim=0, *args, **kwargs) -> None:
