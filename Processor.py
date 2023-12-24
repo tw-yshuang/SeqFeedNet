@@ -491,7 +491,7 @@ def execute(parser: Parser):
     )
 
     #! ========== Network ==========
-    se_model: nn.Module = parser.SE_Net(4, 3) if '3D' in parser.SE_Net.__class__.__name__ else parser.SE_Net(12, 9)
+    se_model: nn.Module = parser.SE_Net(4, 3) if '3D' in parser.SE_Net.__module__ else parser.SE_Net(12, 9)
     me_model: nn.Module = parser.ME_Net(15, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
     optimizer: optim.Optimizer = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=parser.WEIGHT_DECAY)
