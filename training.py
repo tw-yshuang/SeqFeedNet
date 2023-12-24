@@ -91,4 +91,5 @@ if __name__ == '__main__':
     # import sys
 
     # sys.argv = 'training.py --device 1 -epochs 0 -workers 2 -cv 2 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/bestAcc-F_score.pt --do_testing'.split()
+    # sys.argv = 'training.py --device 1 -epochs 2 --batch_size 8 -workers 8 -cv 2 -imghw 112-112 -use-t2val -opt Adam -wd 0.01 -out test'.split()
     cli()
