@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
 from models.unet import *
+from models.Unet3D import *
 from models.SEMwithMEM import *
 from utils.evaluate.losses import *
 from models.unet import UNetVgg16 as BackBone
@@ -264,7 +265,7 @@ class Processor:
             with torch.no_grad():
                 frames, labels, features = transforms(frames, labels, features)
 
-            bg_only_imgs = features[:, 0].unsqueeze(1)
+            bg_only_imgs = features[:, 0]
             for step in range(frames.shape[1]):
                 frame, label = frames[:, step], labels[:, step]
 
@@ -474,7 +475,7 @@ def execute(parser: Parser):
     )
 
     #! ========== Network ==========
-    se_model: nn.Module = parser.SE_Net(9, 6)
+    se_model: nn.Module = parser.SE_Net(3, 2) if '3D' in parser.SE_Net.__class__.__name__ else parser.SE_Net(9, 6)
     me_model: nn.Module = parser.ME_Net(9, 1)
     sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
     optimizer: optim.Optimizer = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=parser.WEIGHT_DECAY)
@@ -498,7 +499,7 @@ def execute(parser: Parser):
         saveDir += path.split('_')[0]
     else:
         model_name = f'{sm_net.__class__.__name__}.{se_model.__class__.__name__}-{me_model.__class__.__name__}'
-        optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}.{parser.WEIGHT_DECAY:.1e}'
+        optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}.wd{parser.WEIGHT_DECAY}'
         saveDir += f'{time.strftime("%m%d-%H%M")}_{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
 
     check2create_dir(saveDir)
