@@ -1,12 +1,6 @@
 import torch
 import torch.nn as nn
 
-if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-
-    sys.path.append(str(Path(__file__).resolve().parents[1]))
-
 
 class StandardNorm(nn.Module):
     def __init__(self, noise_rate=1e-4, dim=0, *args, **kwargs) -> None:
@@ -60,14 +54,14 @@ class SMNet3to2D(nn.Module):
         self.se_model = se_model
         self.me_model = me_model
 
-    def forward(self, frame: torch.Tensor, features: torch.Tensor, bg_only_imgs: torch.Tensor):
+    def forward(self, frame: torch.Tensor, empty_frame: torch.Tensor, features: torch.Tensor, bg_only_imgs: torch.Tensor):
         frame = frame.squeeze(1)
+        empty_frame = empty_frame.squeeze(1)
         bg_only_imgs = bg_only_imgs.unsqueeze(1)
 
-        features = self.se_model(torch.hstack((features, bg_only_imgs)))
-
         b, c, d = features.shape[:3]
-        mask = self.me_model(torch.hstack((features.reshape(b, c * d, *features.shape[3:]), frame)))
+        features_2d = features.reshape(b, c * d, *features.shape[3:])
+        mask = self.me_model(torch.hstack((features_2d, frame, empty_frame)))
 
         return mask, frame, features
 
