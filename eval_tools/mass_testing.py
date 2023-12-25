@@ -5,6 +5,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from submodules.UsefulFileTools.FileOperator import str_format
 
+ENV = os.environ.copy()
+ENV["LINES"] = "40"
+ENV["COLUMNS"] = "203"
+
 
 class GPU_Provider:
     ONE_TEST_SPEND_TIME = 25 * 60
@@ -23,6 +27,7 @@ class GPU_Provider:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 encoding='utf-8',
+                env=ENV,
                 timeout=30,
                 shell=True,
                 text=True,
@@ -62,6 +67,10 @@ def batch_testing4weights(task_dir: str, weight_tags: List[str], cross_validatio
     print(str_format(f"start testing directory: {task_dir}", fore='g'))
 
     filenames = sorted(map(os.path.basename, glob.glob(f'{task_dir}/*.pt')), key=len)
+    if len(filenames) == 0:
+        print(str_format(f"[ModelNotFound] {task_dir}", fore='r'))
+        return isExecute
+
     max_len = len(filenames[-1])
     filenames = [filename for filename in filenames if len(filename) < max_len - 5]
 
@@ -118,30 +127,28 @@ if __name__ == '__main__':
     task_dict = {
         'develop': [
             'out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+            'out/1224-0803_SE-3D.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.1.0e-02_IOULoss_BS-27_Set-2',
         ],
         'dev/BSUVNet-noFPM': [
-            'out/1211-0348_bsuv.weight-decay.random.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
             'out/1211-0325_bsuv.weight-decay.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
-            'out/1219-0254_bsuv.random.224.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
-            'out/1219-0255_bsuv.random.224.bs9_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-9_Set-2',
-            'out/1219-1612_bsuv.random.112.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
-            'out/1220-0307_bsuv.random.112.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
-            'out/1220-0307_bsuv.random.112.bs48_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+            'out/1211-0348_bsuv.weight-decay.random.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
+            'out/1224-0153_bsuv.bs9.112_BSUVNet-noFPM_Adam1.0e-04.1.0e-02_IOULoss_BS-8_Set-2',
+            'out/1224-0153_bsuv.bs9.224_BSUVNet-noFPM_Adam1.0e-04.1.0e-02_IOULoss_BS-8_Set-2',
         ],
         'dev/label2bg': [
             'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
         'dev/dataset-em,1ref,1diff': [
-            'out/1211-1611_feaERD.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+            'out/1223-1905_feaERD.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-48_Set-2',
         ],
         'dev/1epochBackward': [
             'out/1211-1614_1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
         ],
         'dev/feaERD.1eEnNorm': [
-            'out/1211-1617_feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+            'out/1223-1906_feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-48_Set-2'
         ],
         'com/feaERD.label2bg': [
-            'out/1211-1626_feaERD.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+            'out/1223-1907_feaERD.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-48_Set-2',
         ],
         'dev/label2bgRandom': [
             'out/1211-1604_label2bgRandom.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
@@ -150,7 +157,7 @@ if __name__ == '__main__':
             'out/1211-1632_1eb.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
         ],
         'com/feaERD.1eb.label2bg': [
-            'out/1211-1636_feaERD.1eb.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
+            'out/1223-1915_feaERD.1eb.label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
         ],
         'dev/RecAsInp': [
             'out/1211-1621_RecAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
@@ -159,16 +166,22 @@ if __name__ == '__main__':
             'out/1214-2031_EmAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
         'com/EmAsInp.feaERD.1eEnNorm': [
-            'out/1215-1036_EmAsInp.feaERD.1eEnNorm_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+            'out/1223-1940_EmAsInp.feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-48_Set-2'
         ],
         'com/EmAsInp.1eb': [
-            'out/1215-1207_EmAsInp.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
+            'out/1223-1943_EmAsInp.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
         ],
         'com/EmAsInp.feaERD.1eEnNorm.1eb': [
-            'out/1215-1230_EmAsInp.feaERD.1eEnNorm.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
-            'out/1219-0240_EmAsInp.feaERD.1eEnNorm.1eb.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
-            'out/1219-0301_EmAsInp.feaERD.1eEnNorm.1eb.112.noWeightDecay_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
-            'out/1219-1621_EmAsInp.feaERD.1eEnNorm.1eb.112.noWeightDecay.maxGAP100_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-9_Set-2',
+            'out/1223-1933_EmAsInp.feaERD.1eEnNorm.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
+        ],
+        'develop2': [
+            'out/1223-2103_dev2.1e1ib4MEM.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
+        ],
+        'dev2/predInvAsBg': [
+            'out/1223-1951_dev2.predInvAsBg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
+        ],
+        'dev2/1e1ib4MEM': [
+            'out/1224-0916_dev2.1e1ib4MEM.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
         ],
     }
 
@@ -189,10 +202,10 @@ if __name__ == '__main__':
     ]
 
     cross_val = 2
-    gpu_provider = GPU_Provider([0], max_overlap=1)
+    gpu_provider = GPU_Provider([0, 2], max_overlap=2)
 
-    for branch in task_dict.keys():
-        merge_develop_branch(branch)
+    # for branch in task_dict.keys():
+    #     merge_develop_branch(branch)
 
     for branch, task_dirs in task_dict.items():
         if task_dirs == []:
