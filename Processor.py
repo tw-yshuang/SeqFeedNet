@@ -133,7 +133,7 @@ class Processor:
                         frame, empty_frame, label, _ = self.test_transforms(frame, empty_frame, label, None)
                     else:
                         frame, empty_frame, label, features = self.test_transforms(frame, empty_frame, label, features)
-                        bg_only_img = features[:, 0].unsqueeze(1)
+                        bg_only_img = features[:, 0]
                         features = self.model.erd_model(features)
 
                     pred, frame, features = self.model(frame, empty_frame, features, bg_only_img)
