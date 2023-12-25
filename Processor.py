@@ -130,7 +130,7 @@ class Processor:
                         frame, label, _ = self.test_transforms(frame, label, None)
                     else:
                         frame, label, features = self.test_transforms(frame, label, features)
-                        bg_only_img = features[:, 0].unsqueeze(1)
+                        bg_only_img = features[:, 0]
 
                     pred, frame, features = self.model(frame, features, bg_only_img)
                     loss: torch.Tensor = self.loss_func(pred, label)
