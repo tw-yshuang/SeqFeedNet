@@ -11,7 +11,7 @@ ENV["COLUMNS"] = "203"
 
 
 class GPU_Provider:
-    ONE_TEST_SPEND_TIME = 25 * 60
+    ONE_TEST_SPEND_TIME = 5 * 60
 
     def __init__(self, GPUS: List[int], max_overlap: int = 5) -> None:
         self.GPUS = GPUS
@@ -77,7 +77,7 @@ def batch_testing4weights(task_dir: str, weight_tags: List[str], cross_validatio
     for weight_tag in weight_tags:
         weight_tag_info = weight_tag.split('_')
         tag_len = len(weight_tag_info[0])
-        tag_filenames = sorted([filename for filename in filenames if filename.split('_')[0][-tag_len:] == weight_tag_info[0]])
+        tag_filenames = sorted([filename for filename in filenames if filename[:-3].split('_')[0][-tag_len:] == weight_tag_info[0]])
         if len(weight_tag_info) == 2:  # resolve slice info
             slice_info = [None, None, None]
             tag_slice_info = weight_tag_info[1].split(':')
@@ -132,8 +132,8 @@ if __name__ == '__main__':
         'dev/BSUVNet-noFPM': [
             'out/1211-0325_bsuv.weight-decay.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
             'out/1211-0348_bsuv.weight-decay.random.112_BSUVNet-noFPM_Adam1.0e-04_IOULoss_BS-48_Set-2',
-            'out/1224-0153_bsuv.bs9.112_BSUVNet-noFPM_Adam1.0e-04.1.0e-02_IOULoss_BS-8_Set-2',
-            'out/1224-0153_bsuv.bs9.224_BSUVNet-noFPM_Adam1.0e-04.1.0e-02_IOULoss_BS-8_Set-2',
+            'out/1224-0153_bsuv.112_BSUVNet-noFPM_Adam1.0e-04.1.0e-02_IOULoss_BS-8_Set-2',
+            'out/1224-0153_bsuv.224_BSUVNet-noFPM_Adam1.0e-04.1.0e-02_IOULoss_BS-8_Set-2',
         ],
         'dev/label2bg': [
             'out/1211-1607_label2bg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
@@ -166,7 +166,9 @@ if __name__ == '__main__':
             'out/1214-2031_EmAsInp.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2',
         ],
         'com/EmAsInp.feaERD.1eEnNorm': [
-            'out/1223-1940_EmAsInp.feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-48_Set-2'
+            'out/1223-1940_EmAsInp.feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-48_Set-2',
+            'out/1228-0318_EmAsInp.feaERD.1eEnNorm.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-27_Set-2',
+            'out/1228-0336_EmAsInp.feaERD.1eEnNorm.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
         ],
         'com/EmAsInp.1eb': [
             'out/1223-1943_EmAsInp.1eb.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
@@ -176,12 +178,43 @@ if __name__ == '__main__':
         ],
         'develop2': [
             'out/1223-2103_dev2.1e1ib4MEM.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
+            'out/1225-2105_dev2.maxGAP100.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1225-2059_dev2.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1226-2232_dev2.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1227-1739_dev2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1227-2016_dev2.maxGAP30.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1227-2123_dev2.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1230-1322_dev2.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1230-0920_dev2.maxGAP50.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1230-0921_dev2.maxGAP20.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1230-1322_dev2.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1230-2211_dev2.cv1.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/1230-2212_dev2.cv3.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/1230-2218_dev2.cv4.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/1231-0022_dev2.cv1.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/1231-0022_dev2.cv3.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/1231-0023_dev2.cv4.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
         ],
         'dev2/predInvAsBg': [
             'out/1223-1951_dev2.predInvAsBg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.0.0e+00_IOULoss_BS-9_Set-2',
         ],
-        'dev2/1e1ib4MEM': [
+        'dev2/1eb4SEM,1ib4MEM': [
             'out/1224-0916_dev2.1e1ib4MEM.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1226-2233_dev2.1e1ib4MEM.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1226-2233_dev2.1e1ib4MEM.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2/1228-0323_dev2.1e1ib4MEM.3dSEM.112.to200_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-0442_dev2.1e1ib4MEM.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+        ],
+        'com2/1e1ib4MEM.predInvAsBg': [
+            'out/1230-0858_dev2.1e1ib4MEM.predInvAsBg.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1230-0902_dev2.1e1ib4MEM.predInvAsBg.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/1230-0900_dev2.1e1ib4MEM.predInvAsBg.maxGAP30.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-0145_dev2.1e1ib4MEM.predInvAsBg.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-0157_dev2.maxGAP20.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-1935_dev2.1e1ib4MEM.predInvAsBg.maxGAP30.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-0156_dev2.maxGAP50.11_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-0211_dev2.1e1ib4MEM.predInvAsBg.cv1.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0101-0211_dev2.1e1ib4MEM.predInvAsBg.cv3.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0101-0212_dev2.1e1ib4MEM.predInvAsBg.cv4.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
         ],
     }
 
@@ -196,16 +229,19 @@ if __name__ == '__main__':
     # checkpoint: checkpoint_x:x:x, e.g. 'checkpoint_-3:', 'checkpoint_1:4:2'
     weight_tags = [
         'F',
-        'Loss',
+        # 'Prec',
+        # 'Loss',
         'final',
         'checkpoint_-3:',
     ]
 
     cross_val = 2
-    gpu_provider = GPU_Provider([0, 2], max_overlap=2)
+    gpu_provider = GPU_Provider([7], max_overlap=1)
 
+    # subprocess.run(f"git stash", stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding='utf-8', timeout=30, shell=True)
     # for branch in task_dict.keys():
     #     merge_develop_branch(branch)
+    # exit()
 
     for branch, task_dirs in task_dict.items():
         if task_dirs == []:
