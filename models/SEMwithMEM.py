@@ -59,6 +59,7 @@ class SMNet3to2D(nn.Module):
         empty_frame = empty_frame.squeeze(1)
         bg_only_imgs = bg_only_imgs.unsqueeze(1)
 
+        features = self.se_model(torch.hstack((features, bg_only_imgs)))
         b, c, d = features.shape[:3]
         features_2d = features.reshape(b, c * d, *features.shape[3:])
         mask = self.me_model(torch.hstack((features_2d, frame, empty_frame)))
