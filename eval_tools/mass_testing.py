@@ -209,9 +209,9 @@ if __name__ == '__main__':
             'out/1230-0902_dev2.1e1ib4MEM.predInvAsBg.3dSEM.112_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
             'out/1230-0900_dev2.1e1ib4MEM.predInvAsBg.maxGAP30.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
             'out/0101-0145_dev2.1e1ib4MEM.predInvAsBg.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
-            'out/0101-0157_dev2.maxGAP20.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-0157_dev2.1e1ib4MEM.predInvAsBg.maxGAP20.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
             'out/0101-1935_dev2.1e1ib4MEM.predInvAsBg.maxGAP30.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
-            'out/0101-0156_dev2.maxGAP50.11_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0101-0156_dev2.1e1ib4MEM.predInvAsBg.maxGAP50.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
             'out/0101-0211_dev2.1e1ib4MEM.predInvAsBg.cv1.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
             'out/0101-0211_dev2.1e1ib4MEM.predInvAsBg.cv3.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
             'out/0101-0212_dev2.1e1ib4MEM.predInvAsBg.cv4.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
@@ -235,8 +235,7 @@ if __name__ == '__main__':
         'checkpoint_-3:',
     ]
 
-    cross_val = 2
-    gpu_provider = GPU_Provider([7], max_overlap=1)
+    gpu_provider = GPU_Provider([0], max_overlap=1)
 
     # subprocess.run(f"git stash", stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding='utf-8', timeout=30, shell=True)
     # for branch in task_dict.keys():
@@ -254,6 +253,7 @@ if __name__ == '__main__':
 
         isExecute = False
         for task_dir in task_dirs:
+            cross_val = int(task_dir.split('Set-')[-1])
             if batch_testing4weights(task_dir, weight_tags, cross_val, gpu_provider) is True:
                 isExecute = True
         if isExecute:
