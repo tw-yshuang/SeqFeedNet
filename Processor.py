@@ -440,7 +440,7 @@ def execute(parser: Parser):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(42)
     #! ========== Hyperparameter ==========
-    EARLY_STOP = 50
+    EARLY_STOP = -1
     CHECKPOINT = 10
 
     #! ========== Augmentation ==========
