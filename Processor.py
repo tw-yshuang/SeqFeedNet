@@ -16,12 +16,13 @@ from torchvision import transforms
 from models.unet import *
 from models.Unet3D import *
 from models.SEMwithMEM import *
+from utils.transforms import *
 from utils.evaluate.losses import *
 from models.unet import UNetVgg16 as BackBone
 from models.SEMwithMEM import SMNet2D as Model
 from utils.data_process import CDNet2014Dataset
 from utils.data_process import get_data_LoadersAndSet, DatasetConfig
-from utils.transforms import RandomCrop, RandomResizedCrop, CustomCompose, IterativeCustomCompose
+from utils.transforms import RandomCrop, CustomCompose, IterativeCustomCompose
 from utils.evaluate.losses import IOULoss4CDNet2014 as Loss
 from utils.evaluate.accuracy import calculate_acc_metrics as acc_func
 from utils.evaluate.eval_utils import (
@@ -448,9 +449,16 @@ def execute(parser: Parser):
             transforms.RandomChoice(
                 [
                     RandomCrop(crop_size=parser.SIZE_HW, p=1.0),
-                    # RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
-                ]
+                    RandomShiftedCrop(parser.SIZE_HW, max_shift=5, p=1.0),
+                    RandomResizedCrop(parser.SIZE_HW, scale=(0.6, 1.8), ratio=(3.0 / 5.0, 2.0), p=0.9),
+                    PTZZoomCrop(parser.SIZE_HW, overlap_time=10, max_pixelMove=5, p4targets=0.75, p4others=0.9),
+                    PTZPanCrop(parser.SIZE_HW, overlap_time=10, max_pixelMoveH=3, max_pixelMoveW=3, p4targets=0.75, p4others=0.9),
+                ],
+                p=(0.25, 0.25, 0.25, 0.25 * 0.25, 0.25 * 0.75),
             ),
+            AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
+            GaussianNoise(sigma=(0, 0.01)),
+            # RandomHorizontalFlip(0.5),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
@@ -462,13 +470,11 @@ def execute(parser: Parser):
         ]
     )
 
-    argumentation_order_ls = [
-        # transforms.GaussianBlur([3, 3]),
-        # transforms.RandomApply([transforms.ColorJitter(brightness=0.4, hue=0.2, contrast=0.5, saturation=0.2)], p=0.75),
-    ]
+    train_trans_onGPU_ls = []
+    test_trans_onGPU_ls = []
 
-    train_iter_compose = IterativeCustomCompose([*argumentation_order_ls], target_size=parser.SIZE_HW)
-    test_iter_compose = IterativeCustomCompose([], target_size=parser.SIZE_HW)
+    train_iter_compose = IterativeCustomCompose(train_trans_onGPU_ls, target_size=parser.SIZE_HW)
+    test_iter_compose = IterativeCustomCompose(test_trans_onGPU_ls, target_size=parser.SIZE_HW)
 
     #! ========== Datasets ==========
     dataset_cfg = DatasetConfig()

@@ -189,7 +189,8 @@ class CDNet2014Dataset(Dataset):
         if video.id // 10 != CAT2ID['PTZ']:
             emptyBg4InputPaths = tuple(random.choices(video.emptyBgPaths, k=len(frame_ids)))
         else:
-            emptyBg4InputPaths = tuple([video.emptyBgPaths[idx] for idx in frame_ids])
+            len_beforeROI = len(video.inputPaths_beforeROI)
+            emptyBg4InputPaths = tuple([video.emptyBgPaths[len_beforeROI + idx] for idx in frame_ids])
 
         frame_ls = []
         empty_ls = []
@@ -301,8 +302,19 @@ def get_data_LoadersAndSet(
 
 
 if __name__ == '__main__':
+    import time
     from tqdm import tqdm
-    from utils.transforms import RandomCrop, RandomResizedCrop
+    from torchvision.utils import save_image
+    from utils.transforms import (
+        RandomCrop,
+        RandomResizedCrop,
+        RandomShiftedCrop,
+        PTZPanCrop,
+        PTZZoomCrop,
+        AdditiveColorJitter,
+        RandomHorizontalFlip,
+        GaussianNoise,
+    )
 
     sizeHW = (224, 224)
     trans = CustomCompose(
@@ -311,9 +323,16 @@ if __name__ == '__main__':
             transforms.RandomChoice(
                 [
                     RandomCrop(crop_size=sizeHW, p=1.0),
-                    RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
-                ]
+                    RandomShiftedCrop(sizeHW, max_shift=5, p=1.0),
+                    RandomResizedCrop(sizeHW, scale=(0.6, 1.8), ratio=(3.0 / 5.0, 2.0), p=0.9),
+                    PTZZoomCrop(sizeHW, overlap_time=10, max_pixelMove=5, p4targets=0.75, p4others=0.9),
+                    PTZPanCrop(sizeHW, overlap_time=10, max_pixelMoveH=3, max_pixelMoveW=3, p4targets=0.75, p4others=0.9),
+                ],
+                p=(0.25, 0.25, 0.25, 0.25 * 0.25, 0.25 * 0.75),
             ),
+            RandomHorizontalFlip(0.5),
+            GaussianNoise(sigma=(0, 0.01)),
+            AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
@@ -335,11 +354,13 @@ if __name__ == '__main__':
     print(dataset.data_infos)
     print(len(dataset.data_infos))
 
-    info, features, frames, labels = next(iter(dataset))
-    print(info)
+    video_info, frames, empty_frames, labels, features = next(iter(dataset))
+    print(video_info)
     print(frames)
     print(features)
     print(labels)
+
+    del dataset, video_info, frames, empty_frames, labels, features
 
     # =============================
 
@@ -363,7 +384,7 @@ if __name__ == '__main__':
 
     print(info)
     print(features)
-    for i, (frame, label) in enumerate(iterFandL):
+    for i, (frame, empty_frame, label) in enumerate(iterFandL):
         print(i)
 
     # =============================
@@ -375,9 +396,16 @@ if __name__ == '__main__':
             transforms.RandomChoice(
                 [
                     RandomCrop(crop_size=sizeHW, p=1.0),
-                    RandomResizedCrop(sizeHW, scale=(0.6, 1.6), ratio=(3.0 / 5.0, 2.0), p=0.9),
-                ]
+                    RandomShiftedCrop(sizeHW, max_shift=5, p=1.0),
+                    RandomResizedCrop(sizeHW, scale=(0.6, 1.8), ratio=(3.0 / 5.0, 2.0), p=0.9),
+                    PTZZoomCrop(sizeHW, overlap_time=10, max_pixelMove=5, p4targets=0.75, p4others=0.9),
+                    PTZPanCrop(sizeHW, overlap_time=10, max_pixelMoveH=3, max_pixelMoveW=3, p4targets=0.75, p4others=0.9),
+                ],
+                p=(0.25, 0.25, 0.25, 0.25 * 0.25, 0.25 * 0.75),
             ),
+            RandomHorizontalFlip(0.5),
+            GaussianNoise(sigma=(0, 0.01)),
+            AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
@@ -390,29 +418,53 @@ if __name__ == '__main__':
         ]
     )
     dataset_cfg = DatasetConfig()
-    dataset_cfg.next_stage = 1  # ? test used
 
-    train_loader, val_loader, test_set = get_data_SetAndLoader(
+    train_loader, val_loader, test_set = get_data_LoadersAndSet(
         dataset_cfg=dataset_cfg,
-        cv_set=5,
+        cv_set=2,
         dataset_rate=1,
-        batch_size=8,
-        num_workers=16,
-        pin_memory=True,
+        batch_size=1,
+        num_workers=0,
+        pin_memory=False,
         train_transforms_cpu=train_trans_cpu,
         test_transforms_cpu=test_trans_cpu,
         label_isShadowFG=False,
         useTestAsVal=True,
     )
 
+    inverseNorm = transforms.Compose(
+        [
+            transforms.Normalize(mean=[0.0, 0.0, 0.0], std=[1 / 0.229, 1 / 0.224, 1 / 0.225]),
+            transforms.Normalize(mean=[-0.485, -0.456, -0.406], std=[1.0, 1.0, 1.0]),
+        ]
+    )
+
     i = 0
-    for video_info, features, frames, labels in tqdm(train_loader):
+    # train_set = CDNet2014Dataset(cv_dict=datasets_tr, cv_set=5, cfg=DatasetConfig(), transforms_cpu=train_trans_cpu)
+    for video_info, frames, empty_frames, labels, features in tqdm(train_loader):
+        # for video_info, frames, empty_frames, labels, features in tqdm(train_set):
         if i == 0:
-            i += 1
             print(video_info)
-            print(features)
             print(frames)
+            print(empty_frames)
             print(labels)
+            print(features)
+            print("gogogogo")
+        print(i)
+
+        if i < 10:
+            save_image(inverseNorm(features[0]), f'test/aug/{i}_features.png')
+            save_image(inverseNorm(empty_frames[0]), f'test/aug/{i}_empty.png')
+            save_image(inverseNorm(frames[0]), f'test/aug/{i}_frame.png')
+            # save_image(inverseNorm(frames[-1]), f'test/aug/{i}_frameLast.png')
+            # save_image(inverseNorm(labels[0]), f'{i}_label0.png')
+            # save_image(inverseNorm(labels[-1]), f'{i}_labelLast.png')
+
+        time.sleep(1)
+
+        i += 1
+        if i > 10:
+            exit()
 
     test_set = CDNet2014Dataset(datasets_test, 5, None, test_trans, isShadowFG=False, isTrain=False)
     for i, (video_info, features, iterFandL) in enumerate(test_set):
@@ -420,7 +472,7 @@ if __name__ == '__main__':
         if i == 0:
             print(video_info)
             print(features)
-        for j, (frame, label) in enumerate(iterFandL):
+        for j, (frame, empty_frame, label) in enumerate(iterFandL):
             print(f"iter: {j}")
             if j == 0:
                 print(frame)
