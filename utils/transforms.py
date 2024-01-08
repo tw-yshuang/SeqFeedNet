@@ -17,7 +17,7 @@ def monkeyPatch4Compose__call__(self, img: torch.Tensor):
                 case transforms.Normalize.__name__:
                     continue
                 case transforms.Resize.__name__:
-                    img = TF.F_t.resize(img, t.size, InterpolationMode.NEAREST, t.max_size)
+                    img = TF.resize(img, t.size, InterpolationMode.NEAREST, t.max_size)
         img = t(img)
     return img
 
@@ -204,7 +204,7 @@ def RandomResizedCrop(
             frames = TF.F_t.resize(frames, size=sizeHW, antialias=True)
             empty_frames = TF.F_t.resize(empty_frames, size=sizeHW, antialias=True)
             # if isinstance(labels, torch.Tensor):
-            labels = TF.F_t.resize(labels, size=sizeHW, interpolation=InterpolationMode.NEAREST)
+            labels = TF.resize(labels, size=sizeHW, interpolation=InterpolationMode.NEAREST)
 
         return frames, empty_frames, labels, features, roi_mask
 
