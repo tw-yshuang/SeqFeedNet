@@ -146,6 +146,11 @@ def get_tlhw_cropIncludeROI(
     return t, l, h, w
 
 
+# def CheckSize(sizeHW=(224, 224)):
+#     def __CheckSize(*inputs, roi_mask: torch.Tensor | None = None):
+#         assert inputs[0].shape[-2:]
+
+
 def RandomCrop(crop_size=(224, 224), p=0.5):
     minimum_roi_area = int(crop_size[0] * crop_size[1] * MINIMUM_ROI_AREA_RATE)
 
@@ -203,7 +208,6 @@ def RandomResizedCrop(
             features = TF.F_t.resize(features, size=sizeHW, antialias=True)
             frames = TF.F_t.resize(frames, size=sizeHW, antialias=True)
             empty_frames = TF.F_t.resize(empty_frames, size=sizeHW, antialias=True)
-            # if isinstance(labels, torch.Tensor):
             labels = TF.resize(labels, size=sizeHW, interpolation=InterpolationMode.NEAREST)
 
         return frames, empty_frames, labels, features, roi_mask
@@ -222,10 +226,6 @@ def RandomShiftedCrop(crop_size: Tuple[int] = (224, 224), max_shift: int = 5, p:
         features: torch.Tensor,
         roi_mask: torch.Tensor | None = None,
     ):
-        # new_frames = torch.zeros((*frames.shape[:2], *sizeHW), dtype=frames.dtype)
-        # new_labels = torch.zeros((*labels.shape[:2], *sizeHW), dtype=labels.dtype)
-        # new_empty_frames = torch.zeros((*empty_frames.shape[:2], *sizeHW), dtype=empty_frames.dtype)
-
         if random.random() > p:
             return randomCrop(frames, labels, empty_frames, features, roi_mask=roi_mask)
 
@@ -244,7 +244,7 @@ def RandomShiftedCrop(crop_size: Tuple[int] = (224, 224), max_shift: int = 5, p:
         new_features = torch.zeros((*features.shape[:2], *crop_size), dtype=frames.dtype)
         new_features[0] = empty_frames[0]
         new_features[1] = TF.F_t.crop(features[1], t + recent_shift_h, l + recent_shift_w, h, w)
-        new_features[2] = new_features[1] - frames[0]
+        new_features[2] = torch.abs(new_features[1] - frames[0])
 
         return frames, empty_frames, labels, new_features, roi_mask
 
@@ -260,8 +260,8 @@ def PTZPanCrop(
     p4others: float = 0.9,
 ):
     minimum_roi_area = int(crop_size[0] * crop_size[1] * MINIMUM_ROI_AREA_RATE)
-    pixelMoveH_options = [*list(range(-max_pixelMoveH, 0)), *list(range(max_pixelMoveH + 1))]
-    pixelMoveW_options = [*list(range(-max_pixelMoveW, 0)), *list(range(max_pixelMoveW + 1))]
+    pixelMoveH_options = list(range(-max_pixelMoveH, max_pixelMoveH + 1))
+    pixelMoveW_options = list(range(-max_pixelMoveW, max_pixelMoveW + 1))
 
     def __PTZPanCrop(
         frames: torch.Tensor,
@@ -278,13 +278,13 @@ def PTZPanCrop(
         update_time = overlap_time - 1
         while True:
             pixelMoveH = random.choice(pixelMoveH_options)
-            pixelMoveH_edge = pixelMoveH * update_time
-            if t + pixelMoveH_edge > 0 and frames.shape[-2] > t + h + pixelMoveH_edge:
+            pixelMoveH_edge = t + pixelMoveH * update_time
+            if pixelMoveH_edge >= 0 and frames.shape[-2] >= h + pixelMoveH_edge:
                 break
         while True:
             pixelMoveW = random.choice(pixelMoveW_options)
             pixelMoveW_edge = pixelMoveW * update_time
-            if l + pixelMoveW_edge > 0 and frames.shape[-1] > l + w + pixelMoveW_edge:
+            if pixelMoveW_edge >= 0 and frames.shape[-1] >= w + pixelMoveW_edge:
                 break
 
         if random.random() > p4targets:
@@ -318,7 +318,7 @@ def PTZPanCrop(
 
         # * features: ERD -> empty, recent, recent - firstCurrent
         new_features[0] = new_empty_frames[0]
-        new_features[2] = new_features[1] - new_frames[0]
+        new_features[2] = torch.abs(new_features[1] - new_frames[0])
 
         return new_frames, new_empty_frames, new_labels, new_features, roi_mask
 
@@ -429,7 +429,7 @@ def PTZZoomCrop(
 
         # * features: ERD -> empty, recent, recent - firstCurrent
         new_features[0] = new_empty_frames[0]
-        new_features[2] = new_features[1] - new_frames[0]
+        new_features[2] = torch.abs(new_features[1] - new_frames[0])
 
         return new_frames, new_empty_frames, new_labels, new_features, roi_mask
 

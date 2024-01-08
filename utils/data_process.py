@@ -203,7 +203,7 @@ class CDNet2014Dataset(Dataset):
         frames = torch.stack(frame_ls).type(torch.float32) / 255.0
         empty_frames = torch.stack(empty_ls).type(torch.float32) / 255.0
         labels = torch.stack(label_ls)
-        features[-1] = features[1] - frames[0]
+        features[-1] = torch.abs(features[1] - frames[0])
 
         # * video_info, frames, empty_frames, labels, features
         return video.id, *self.transforms_cpu(frames, empty_frames, labels, features, video.ROI_mask)
@@ -244,7 +244,7 @@ class CDNet2014Dataset(Dataset):
         f1 = read_image(video.recentBgPaths_inROI[frame_id])
         f2 = read_image(video.inputPaths_inROI[frame_id])
 
-        return torch.stack([f0, f1, f1 - f2])
+        return torch.stack([f0, f1, torch.abs(f1 - f2)])
 
     @classmethod
     def update_frame_gap(cls, epoch: int = 1):
