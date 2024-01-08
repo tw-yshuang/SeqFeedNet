@@ -360,6 +360,9 @@ def PTZZoomCrop(
             fix_edge = min(edge_t, edge_h, edge_l, edge_w)
             if fix_edge < 0:  # fix_edge to avoid black edge
                 frame_t, frame_l, frame_h, frame_w = t - fix_edge, l - fix_edge, h + fix_edge * 2, w + fix_edge * 2
+                min_hw = min(frame_h, frame_w)
+                if min_hw <= 0:
+                    frame_h, frame_w = frame_h - min_hw + 1, frame_w - min_hw + 1
             else:
                 frame_t, frame_l, frame_h, frame_w = t, l, h, w
 
@@ -396,6 +399,9 @@ def PTZZoomCrop(
             fix_edge = min(edge_t, edge_h, edge_l, edge_w)
             if fix_edge < 0:  # fix_edge to avoid black edge
                 t, l, h, w = t - fix_edge, l - fix_edge, h + fix_edge * 2, w + fix_edge * 2
+                min_hw = min(h, w)
+                if min_hw <= 0:
+                    h, w = h - min_hw + 1, w - min_hw + 1
 
             new_features = torch.zeros((*features.shape[:2], *crop_size), dtype=features.dtype)
             new_empty_frames = torch.zeros((*empty_frames.shape[:2], *crop_size), dtype=empty_frames.dtype)
