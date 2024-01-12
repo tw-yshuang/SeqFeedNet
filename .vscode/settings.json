@@ -49,6 +49,7 @@
         "torchvision",
         "tvtf",
         "unet",
-        "unsqueeze"
+        "unsqueeze",
+        "vflip"
     ]
 }

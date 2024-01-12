@@ -240,6 +240,30 @@ if __name__ == '__main__':
             'out/0105-1808_dev2.1e1ib4MEM.predInvAsBg.maxGAP20.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
             'out/0105-1819_dev2.1e1ib4MEM.predInvAsBg.3dSEM.224_SMNet3to2D.UNet3D-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
         ],
+        'develop3': sorted(
+            [
+                'out/0108-0903_dev3.onAug.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+                'out/0108-0903_dev3.onAug.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+                'out/0108-2335_dev3.cv1.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+                'out/0108-2335_dev3.cv2.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+                'out/0108-2335_dev3.cv3.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+                'out/0108-2336_dev3.cv4.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+                'out/0108-2338_dev3.predInvAsBg.cv1.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+                'out/0108-2338_dev3.predInvAsBg.cv2.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+                'out/0108-2339_dev3.predInvAsBg.cv3.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+                'out/0108-2339_dev3.predInvAsBg.cv4.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+                'out/0110-2127_dev3.predInvAsBg.cv1.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+                'out/0110-2127_dev3.predInvAsBg.cv2.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+                'out/0110-2127_dev3.predInvAsBg.cv3.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+                'out/0110-2127_dev3.predInvAsBg.cv4.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+                'out/0110-2203_dev3.cv1.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+                'out/0110-2203_dev3.cv2.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+                'out/0110-2203_dev3.cv3.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+                'out/0110-2203_dev3.cv4.112.to200_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+                'out/0109-0714_dev3.predInvAsBg.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            ],
+            reverse=False,
+        ),
     }
 
     # Flags:
@@ -259,7 +283,7 @@ if __name__ == '__main__':
         'checkpoint_-3:',
     ]
 
-    gpu_provider = GPU_Provider([1], max_overlap=2)
+    gpu_provider = GPU_Provider([6], max_overlap=2)
 
     # subprocess.run(f"git stash", stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding='utf-8', timeout=30, shell=True)
     # for branch in task_dict.keys():

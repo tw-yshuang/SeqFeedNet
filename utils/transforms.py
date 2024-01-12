@@ -178,6 +178,16 @@ def RandomHorizontalFlip(p=0.5):
     return __RandomHorizontalFlip
 
 
+def RandomVerticalFlip(p=0.5):
+    def __RandomVerticalFlip(*inputs, roi_mask: torch.Tensor | None = None):
+        if random.random() < p:
+            inputs = [TF.F_t.vflip(input) for input in inputs]
+
+        return *inputs, roi_mask
+
+    return __RandomVerticalFlip
+
+
 def RandomResizedCrop(
     sizeHW: List[int] = (224, 224),
     scale: List[float] = (0.6, 1.6),

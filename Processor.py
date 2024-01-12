@@ -292,11 +292,7 @@ class Processor:
                     self.optimizer.zero_grad()
 
                 with torch.no_grad():
-                    if isTrain:
-                        bg_only_imgs, _ = self.get_bgOnly_and_mask(frame, label)
-                        _, pred_mask = self.get_bgOnly_and_mask(frame, pred)
-                    else:
-                        bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
+                    bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
                     videos_accumulator.batchLevel_matrix[-2] += loss.item()  # batchLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
@@ -456,22 +452,31 @@ def execute(parser: Parser):
                 ],
                 p=(0.25, 0.25, 0.25, 0.25 * 0.25, 0.25 * 0.75),
             ),
-            AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
-            GaussianNoise(sigma=(0, 0.01)),
-            # RandomHorizontalFlip(0.5),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
+            # GaussianNoise(sigma=(0, 0.01)),
+            # # RandomHorizontalFlip(0.5),
+            # # RandomVerticalFlip(0.5),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 
     test_trans_cpu = transforms.Compose(
         [
             transforms.Resize(parser.SIZE_HW, antialias=True),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 
-    train_trans_onGPU_ls = []
-    test_trans_onGPU_ls = []
+    train_trans_onGPU_ls = [
+        AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
+        GaussianNoise(sigma=(0, 0.01)),
+        RandomHorizontalFlip(0.5),
+        RandomVerticalFlip(0.5),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+    test_trans_onGPU_ls = [
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
 
     train_iter_compose = IterativeCustomCompose(train_trans_onGPU_ls, target_size=parser.SIZE_HW)
     test_iter_compose = IterativeCustomCompose(test_trans_onGPU_ls, target_size=parser.SIZE_HW)

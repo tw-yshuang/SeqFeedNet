@@ -313,6 +313,7 @@ if __name__ == '__main__':
         PTZZoomCrop,
         AdditiveColorJitter,
         RandomHorizontalFlip,
+        RandomVerticalFlip,
         GaussianNoise,
     )
 
@@ -330,8 +331,9 @@ if __name__ == '__main__':
                 ],
                 p=(0.25, 0.25, 0.25, 0.25 * 0.25, 0.25 * 0.75),
             ),
-            RandomHorizontalFlip(0.5),
             GaussianNoise(sigma=(0, 0.01)),
+            RandomHorizontalFlip(0.5),
+            RandomVerticalFlip(0.5),
             AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
@@ -402,10 +404,12 @@ if __name__ == '__main__':
                     PTZPanCrop(sizeHW, overlap_time=10, max_pixelMoveH=3, max_pixelMoveW=3, p4targets=0.75, p4others=0.9),
                 ],
                 p=(0.25, 0.25, 0.25, 0.25 * 0.25, 0.25 * 0.75),
+                # p=(*[0.0] * 3, 1.0, 0.0),
             ),
-            RandomHorizontalFlip(0.5),
-            GaussianNoise(sigma=(0, 0.01)),
             AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
+            GaussianNoise(sigma=(0, 0.01)),
+            RandomHorizontalFlip(0.5),
+            RandomVerticalFlip(0.5),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
@@ -440,9 +444,7 @@ if __name__ == '__main__':
     )
 
     i = 0
-    # train_set = CDNet2014Dataset(cv_dict=datasets_tr, cv_set=5, cfg=DatasetConfig(), transforms_cpu=train_trans_cpu)
     for video_info, frames, empty_frames, labels, features in tqdm(train_loader):
-        # for video_info, frames, empty_frames, labels, features in tqdm(train_set):
         if i == 0:
             print(video_info)
             print(frames)
