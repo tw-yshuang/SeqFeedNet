@@ -17,9 +17,9 @@ class TestResultCollector:
         self.toDir = toDir
         self.score_names = score_names
         self.col_names = col_names
-        self.col_dict = {name: [] for name in col_names}
 
     def collect(self, target: str):
+        col_dict = {name: [] for name in col_names}
         filenames = list(set(get_filenames(self.fromDir, f'**/Test/{target}.csv', withDirPath=False)))
 
         for filename in filenames:
@@ -42,11 +42,11 @@ class TestResultCollector:
             for name, score in zip(
                 col_names, [name, full_name, type_name, epoch, scores.Prec, scores.Recall, scores.F_score, scores.ACC, loss_scores]
             ):
-                self.col_dict[name].append(score)
+                col_dict[name].append(score)
 
         save_dir = '/'.join(f'{out_dir}/{target}.csv'.split('/')[:-1])
         check2create_dir(save_dir)
-        pd.DataFrame(self.col_dict).to_csv(f'{out_dir}/{target}.csv', index=False)
+        pd.DataFrame(col_dict).to_csv(f'{out_dir}/{target}.csv', index=False)
         print(str_format(f"Successfully collect task: {target}", fore='y'))
 
 

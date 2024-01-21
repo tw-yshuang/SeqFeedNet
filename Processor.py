@@ -431,10 +431,10 @@ def convertStr2Parser(
 
 
 def execute(parser: Parser):
-    random.seed(42)
-    torch.manual_seed(42)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(42)
+    # random.seed(42)
+    # torch.manual_seed(42)
+    # if torch.cuda.is_available():
+    #     torch.cuda.manual_seed_all(42)
     #! ========== Hyperparameter ==========
     EARLY_STOP = -1
     CHECKPOINT = 10
@@ -471,7 +471,7 @@ def execute(parser: Parser):
         AdditiveColorJitter(brightness=0.5, contrast=0.2, saturation=0.2, hue=0.075, p=0.9),
         GaussianNoise(sigma=(0, 0.01)),
         RandomHorizontalFlip(0.5),
-        RandomVerticalFlip(0.5),
+        # RandomVerticalFlip(0.5),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ]
     test_trans_onGPU_ls = [
