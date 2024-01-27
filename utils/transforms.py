@@ -209,16 +209,15 @@ def RandomResizedCrop(
             else:
                 t, l, h, w = get_tlhw_cropIncludeROI(minimum_roi_area, roi_mask, scale, ratio, CropMethod=transforms.RandomResizedCrop)
 
-            features = TF.resized_crop(features, t, l, h, w, size=sizeHW, antialias=True)
-            frames = TF.resized_crop(frames, t, l, h, w, size=sizeHW, antialias=True)
-            empty_frames = TF.resized_crop(empty_frames, t, l, h, w, size=sizeHW, antialias=True)
-            labels = TF.resized_crop(labels, t, l, h, w, size=sizeHW, interpolation=InterpolationMode.NEAREST)
-        else:
-            w, h = frames.shape[-1], frames.shape[-2]
-            features = TF.F_t.resize(features, size=sizeHW, antialias=True)
-            frames = TF.F_t.resize(frames, size=sizeHW, antialias=True)
-            empty_frames = TF.F_t.resize(empty_frames, size=sizeHW, antialias=True)
-            labels = TF.resize(labels, size=sizeHW, interpolation=InterpolationMode.NEAREST)
+            features = TF.F_t.crop(features, t, l, h, w)
+            frames = TF.F_t.crop(frames, t, l, h, w)
+            empty_frames = TF.F_t.crop(empty_frames, t, l, h, w)
+            labels = TF.F_t.crop(labels, t, l, h, w)
+
+        features = TF.F_t.resize(features, size=sizeHW, antialias=True)
+        frames = TF.F_t.resize(frames, size=sizeHW, antialias=True)
+        empty_frames = TF.F_t.resize(empty_frames, size=sizeHW, antialias=True)
+        labels = TF.resize(labels, size=sizeHW, interpolation=InterpolationMode.NEAREST)
 
         return frames, empty_frames, labels, features, roi_mask
 
