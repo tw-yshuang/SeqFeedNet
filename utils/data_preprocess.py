@@ -25,7 +25,7 @@ class CDNet2014Preprocess:
         label = gt if self.image_size == None else TF.resize(gt, self.image_size, InterpolationMode.NEAREST)
         label = label.type(torch.float32)
 
-        label[label < self.PXL_VAL_SHADOW - self.eps] = 0.0
+        label[label < self.PXL_VAL_SHADOW + self.eps] = 0.0
         if self.isShadowFG:
             label[torch.where((label <= self.PXL_VAL_SHADOW + self.eps) & (label >= self.PXL_VAL_SHADOW - self.eps))] = 1.0
 
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     print(len(filenames))
 
     # ! Test for CDNet2014
-    data_processes = CDNet2014Preprocess(image_size=(244, 244), isShadowFG=True, eps=3)  # all pass
+    data_processes = CDNet2014Preprocess(image_size=(244, 244), isShadowFG=False, eps=3)  # all pass
     for i, filename in enumerate([filenames[9842], filenames[26842], filenames[65697], filenames[115181], filenames[125681]]):
         print(filename)
         img = read_image(filename)
