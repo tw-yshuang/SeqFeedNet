@@ -32,7 +32,7 @@ class TestResultCollector:
             type_names = type_names.split('_')
             type_name, epoch = type_names[-2], type_names[-1][1:]
 
-            test_csv = pd.read_csv(f'{dir_name}/{filename}')
+            test_csv = pd.read_csv(f'{self.fromDir}/{filename}')
 
             slice_flag = None if score_names[-1] in test_csv.columns else -1
             scores = test_csv.loc[0, score_names[:slice_flag]]
