@@ -289,10 +289,39 @@ if __name__ == '__main__':
             'out/0116-0958_dev3.maxGAP25.cv2.112_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
             'out/0116-0951_dev3.adamW.cv1.112_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
             'out/0116-1000_dev3.adamW.cv2.112_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
-            # 'out/0119-0949_dev3.adamW.maxGAP15.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
-            # 'out/0119-0949_dev3.adamW.maxGAP15.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
-            # 'out/0119-0949_dev3.adamW.maxGAP15.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
-            # 'out/0119-0949_dev3.adamW.maxGAP15.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0119-0949_dev3.adamW.maxGAP15.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0119-0949_dev3.adamW.maxGAP15.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0119-0949_dev3.adamW.maxGAP15.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0119-0949_dev3.adamW.maxGAP15.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0121-1218_dev3.frameG1.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0121-1218_dev3.frameG1.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0121-1215_dev3.frameG1.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0121-1215_dev3.frameG1.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0121-2215_dev3.frameG2.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0121-2215_dev3.frameG2.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0121-2215_dev3.frameG2.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0121-1517_dev3.frameG2.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0120-1131_dev3.final2.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0120-1132_dev3.final2.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0120-1131_dev3.final2.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0120-1131_dev3.final2.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0124-1127_dev3.maxGAP15.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0123-1403_dev3.maxGAP15.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0123-1404_dev3.maxGAP15.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0123-1405_dev3.maxGAP15.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0123-1717_dev3.maxGAP10.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0123-1717_dev3.maxGAP10.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0123-1717_dev3.maxGAP10.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0123-1717_dev3.maxGAP10.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0126-2110_dev3.maxGAP1.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0126-2116_dev3.maxGAP1.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0126-2118_dev3.maxGAP1.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0127-0305_dev3.maxGAP2.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0127-0305_dev3.maxGAP2.cv2.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-2',
+            'out/0127-0305_dev3.maxGAP2.cv3.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-3',
+            'out/0127-0305_dev3.maxGAP2.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-4',
+            'out/0128-1253_dev3.maxGAP2.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
+            'out/0128-1254_dev3.maxGAP1.cv1.224_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04.wd0.0_IOULoss_BS-9_Set-1',
         ][::],
     }
 
@@ -314,6 +343,7 @@ if __name__ == '__main__':
     ]
 
     gpu_provider = GPU_Provider([6], max_overlap=2)
+    saveResult = False
 
     # subprocess.run(f"git stash", stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding='utf-8', timeout=30, shell=True)
     # for branch in task_dict.keys():
