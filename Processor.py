@@ -1,4 +1,4 @@
-import sys, time, random
+import re, sys, time, random
 from pathlib import Path
 from typing import Callable, Generator, List, Tuple
 
@@ -20,6 +20,7 @@ from utils.transforms import *
 from utils.evaluate.losses import *
 from models.unet import UNetVgg16 as BackBone
 from models.SEMwithMEM import SMNet2D as Model
+from utils.ResultOperator import ResultOperator
 from utils.data_process import CDNet2014Dataset
 from utils.data_process import get_data_LoadersAndSet, DatasetConfig
 from utils.transforms import RandomCrop, CustomCompose, IterativeCustomCompose
@@ -101,12 +102,18 @@ class Processor:
         dataset.transforms_cpu.transforms[0] = transforms.Resize((h, w), antialias=True)
         self.test_transforms.target_size = (h, w)
 
-    def testing(self, saveDir: str, dataset: CDNet2014Dataset | Dataset):
+    def testing(self, saveDir: str, dataset: CDNet2014Dataset | Dataset, saveResult: bool = False):
         summaryRecord = SummaryRecord(saveDir, 1, None, self.acc_func, mode='Test')
-        self.__testing(dataset, summaryRecord=summaryRecord)
+        self.__testing(dataset, summaryRecord=summaryRecord, saveResult=saveResult, saveDir=saveDir)
         summaryRecord.export2csv()
 
-    def __testing(self, dataset: CDNet2014Dataset | Dataset, summaryRecord: SummaryRecord | None = None):
+    def __testing(
+        self,
+        dataset: CDNet2014Dataset | Dataset,
+        summaryRecord: SummaryRecord | None = None,
+        saveResult: bool = False,
+        saveDir: str = 'out',
+    ):
         if summaryRecord is None:
             summaryRecord = self.summaries[-1]
         videos_accumulator = OneEpochVideosAccumulator()
@@ -120,6 +127,13 @@ class Processor:
             test_iter: Generator[Tuple[torch.Tensor, torch.Tensor]]
 
             self.fix_testing_size(dataset, 0)
+
+            if saveResult:
+                result_opt = ResultOperator(
+                    dataset.data_infos[0], sizeHW=dataset.data_infos[0][1].ROI_mask.shape[-2:], taskDir=saveDir
+                )
+            else:
+                result_opt = lambda: None
 
             for next_idx, (video_id, features, test_iter) in enumerate(track(dataset, "Test Video Processing..."), 1):
                 video_id = torch.tensor(video_id).to(self.device).reshape(1, 1)
@@ -144,6 +158,11 @@ class Processor:
                     videos_accumulator.batchLevel_matrix[-2] += loss.to('cpu')  # batchLevel loss is different with others
                     videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
+                    result_opt(pred_mask, pred, features)
+                if saveResult and next_idx != len(dataset.data_infos):
+                    result_opt = ResultOperator(
+                        dataset.data_infos[next_idx], sizeHW=dataset.data_infos[next_idx][1].ROI_mask.shape[-2:], taskDir=saveDir
+                    )
                 self.fix_testing_size(dataset, next_idx)
 
             summaryRecord.records(videos_accumulator)
@@ -347,6 +366,8 @@ class Parser:
 
     useTestAsVal: bool
     DO_TESTING: bool
+    testFromBegin: bool
+    saveTestResult: bool
 
     PRETRAIN_WEIGHT: str
     OUT: str
@@ -357,7 +378,7 @@ def convertStr2Parser(
     me_network: str = 'UNetVgg16',
     sm_network: str = 'SMNet2D',
     loss_func: str = 'IOULoss4CDNet2014',
-    optimizer: str = 'Adam',
+    optimizer: str = '',
     learning_rate: float = 1e-4,
     weight_decay: float = 0,
     num_epochs: int = 0,
@@ -369,6 +390,8 @@ def convertStr2Parser(
     use_test_as_val: bool = False,
     device: int = 0,
     do_testing: bool = False,
+    test_from_begin: bool = True,
+    save_test_result: bool = False,
     pretrain_weight: str = '',
     output: str = '',
 ):
@@ -390,6 +413,8 @@ def convertStr2Parser(
         use_test_as_val: "Use test_data as validation data, use this flag will set '--data_split_rate=1.0'",
         device: "CUDA ID, if system can not find Nvidia GPU, it will use CPU",
         do_testing: "Do testing evaluation is a time-consuming process, suggest not do it",
+        test_from_begin: "Do testing evaluation from beginning"
+        save_test_result: "Save testing all the result"
         pretrain_weight: "Pretrain weight, model structure must same with the setting",
         output: "Model output directory"
     '''
@@ -408,10 +433,16 @@ def convertStr2Parser(
     parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
 
     #! ========== Hyperparameter ==========
-    parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
+    if optimizer == '':
+        if pretrain_weight == '':
+            optimizer = 'Adam'
+        else:
+            optimizer = re.match(r'^[A-Za-z]+', pretrain_weight.split('/')[-2].split('_')[-4]).group(0)
+
     parser.OPTIMIZER: optim = getattr(optim, optimizer)
     parser.LEARNING_RATE = learning_rate
     parser.WEIGHT_DECAY = weight_decay
+    parser.LOSS: nn.Module | Loss = getattr(module_locate, loss_func)
     parser.NUM_EPOCHS = num_epochs
     parser.BATCH_SIZE = batch_size
 
@@ -419,6 +450,8 @@ def convertStr2Parser(
     parser.NUM_WORKERS = num_workers
     parser.CV_SET = cv_set_number
     parser.DO_TESTING = do_testing
+    parser.testFromBegin = test_from_begin
+    parser.saveTestResult = save_test_result
     parser.useTestAsVal = use_test_as_val
     parser.SIZE_HW = tuple(map(int, img_sizeHW.split('-')))
 
@@ -497,6 +530,7 @@ def execute(parser: Parser):
         label_isShadowFG=False,
         useTestAsVal=parser.useTestAsVal,
         onlyTest=parser.NUM_EPOCHS == 0,
+        testFromBegin=parser.testFromBegin,
     )
 
     #! ========== Network ==========
@@ -543,7 +577,7 @@ def execute(parser: Parser):
     #! ========== Testing Evaluation ==========
     if parser.NUM_EPOCHS == 0 and parser.DO_TESTING:
         print(str_format("Testing Evaluate!!", fore='y'))
-        processor.testing(saveDir, test_set)
+        processor.testing(saveDir, test_set, parser.saveTestResult)
         exit()
 
     #! ========== Training Process ==========
