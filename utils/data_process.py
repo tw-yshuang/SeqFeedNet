@@ -114,6 +114,7 @@ class CDNet2014Dataset(Dataset):
         transforms_cpu: CustomCompose | transforms.Compose = None,
         isShadowFG: bool = False,
         isTrain: bool = True,
+        testFromBegin: bool = True,
     ) -> None:
         """
         This function initializes a dataset object for training or testing purposes, based on the
@@ -139,6 +140,7 @@ class CDNet2014Dataset(Dataset):
         self.transforms_cpu = transforms_cpu
         self.preprocess = CDNet2014Preprocess(isShadowFG=isShadowFG)
         self.isTrain = isTrain
+        self.testFromBegin = testFromBegin
 
         self.categories = [CDNet2014OneCategory(name=k, ls=v) for k, v in self.cv_dict.items()]
         self.data_infos: List[Tuple[CDNet2014OneCategory, CDNet2014OneVideo, int]] = []  # [(cate, video, frame_inROI_id)...]
@@ -209,12 +211,22 @@ class CDNet2014Dataset(Dataset):
         return video.id, *self.transforms_cpu(frames, empty_frames, labels, features, video.ROI_mask)
 
     def __getitem4testIter(self, video: CDNet2014OneVideo):
-        if video.id // 10 != CAT2ID['PTZ']:
-            emptyBg4InputPaths = tuple(random.choices(video.emptyBgPaths, k=len(video.inputPaths_inROI)))
+        if self.testFromBegin:
+            inputPaths = video.inputPaths_all
+            gtPaths = video.gtPaths_all
+            if video.id // 10 != CAT2ID['PTZ']:
+                emptyBg4InputPaths = tuple(sorted(random.choices(video.emptyBgPaths, k=len(video.inputPaths_all))))
+            else:
+                emptyBg4InputPaths = video.emptyBgPaths
         else:
-            emptyBg4InputPaths = video.emptyBgPaths[len(video.inputPaths_beforeROI) :]
+            inputPaths = video.inputPaths_inROI
+            gtPaths = video.gtPaths_inROI
+            if video.id // 10 != CAT2ID['PTZ']:
+                emptyBg4InputPaths = tuple(random.choices(video.emptyBgPaths, k=len(video.inputPaths_inROI)))
+            else:
+                emptyBg4InputPaths = video.emptyBgPaths[len(video.inputPaths_beforeROI) :]
 
-        for input_path, empty_path, gt_path in zip(video.inputPaths_inROI, emptyBg4InputPaths, video.gtPaths_inROI):
+        for input_path, empty_path, gt_path in zip(inputPaths, emptyBg4InputPaths, gtPaths):
             frame = read_image(input_path).unsqueeze(0).type(torch.float32) / 255.0
             empty = read_image(empty_path).unsqueeze(0).type(torch.float32) / 255.0
             label = self.preprocess(read_image(gt_path)).unsqueeze(0)
@@ -274,9 +286,18 @@ def get_data_LoadersAndSet(
     label_isShadowFG: bool = False,
     useTestAsVal: bool = False,
     onlyTest: bool = False,
+    testFromBegin: bool = True,
     **kwargs,
 ):
-    test_set = CDNet2014Dataset(datasets_test, cv_set, dataset_cfg, test_transforms_cpu, isShadowFG=label_isShadowFG, isTrain=False)
+    test_set = CDNet2014Dataset(
+        datasets_test,
+        cv_set,
+        dataset_cfg,
+        test_transforms_cpu,
+        isShadowFG=label_isShadowFG,
+        isTrain=False,
+        testFromBegin=testFromBegin,
+    )
 
     if onlyTest:
         return None, None, test_set

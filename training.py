@@ -27,7 +27,7 @@ help_doc = {
 @click.option('-me', '--me_network', default='UNetVgg16', help=help_doc['me_network'])
 @click.option('-sm', '--sm_network', default='SMNet2D', help=help_doc['sm_network'])
 @click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help=help_doc['loss_func'])
-@click.option('-opt', '--optimizer', default='Adam', help=help_doc['optimizer'])
+@click.option('-opt', '--optimizer', default='', help=help_doc['optimizer'])
 @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
 @click.option('-wd', '--weight_decay', default=0.0, help=help_doc['weight_decay'])
 @click.option('-epochs', '--num_epochs', default=0, help=help_doc['num_epochs'])
@@ -80,8 +80,8 @@ def cli(
         use_test_as_val,
         device,
         do_testing,
-        pretrain_weight,
-        output,
+        pretrain_weight=pretrain_weight,
+        output=output,
     )
 
     execute(parser)
@@ -92,4 +92,5 @@ if __name__ == '__main__':
 
     # sys.argv = 'training.py --device 1 -epochs 0 -workers 2 -cv 2 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/bestAcc-F_score.pt --do_testing'.split()
     # sys.argv = 'training.py --device 1 -epochs 2 --batch_size 8 -workers 8 -cv 2 -imghw 112-112 -use-t2val -opt Adam -wd 0.01 -out test'.split()
+    # sys.argv = 'training.py --device 7 -epochs 119 --batch_size 9 -workers 9 -cv 4 -imghw 224-224 -use-t2val --pretrain_weight out/0130-1336_dev4.maxGAP15.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-4/checkpoint_e080.pt -out dev4.maxGAP15.cv2.to200.224'.split()
     cli()
