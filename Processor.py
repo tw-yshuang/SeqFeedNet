@@ -133,7 +133,7 @@ class Processor:
                     dataset.data_infos[0], sizeHW=dataset.data_infos[0][1].ROI_mask.shape[-2:], taskDir=saveDir
                 )
             else:
-                result_opt = lambda: None
+                result_opt = lambda *args: None
 
             for next_idx, (video_id, features, test_iter) in enumerate(track(dataset, "Test Video Processing..."), 1):
                 video_id = torch.tensor(video_id).to(self.device).reshape(1, 1)
