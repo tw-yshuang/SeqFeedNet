@@ -42,7 +42,4 @@ def cli(
 
 
 if __name__ == '__main__':
-    import sys
-
-    sys.argv = 'testing.py --device 0 -cv 4 --pretrain_weight weights/proposed/cv4.pt'.split()
     cli()
