@@ -2,26 +2,14 @@ import torch
 import torch.nn as nn
 
 
-class StandardNorm(nn.Module):
-    def __init__(self, noise_rate=1e-4, dim=0, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        self.noise_rate = noise_rate
-        self.dim = dim
+class SeqFeedNet(nn.Module):
+    def __init__(self, se_model: nn.Module, fp_model: nn.Module, *args, **kwargs) -> None:
+        super(SeqFeedNet, self).__init__(*args, **kwargs)
 
-    def forward(self, x: torch.Tensor):
-        mean = x.mean(dim=self.dim, keepdim=True)
-        std = x.std(self.dim, unbiased=False, keepdim=True)
-        return (x - mean) / (std + torch.randn(1).to(x.device) * self.noise_rate)
-
-
-class SMNet2D(nn.Module):
-    def __init__(self, se_model: nn.Module, me_model: nn.Module, *args, **kwargs) -> None:
-        super(SMNet2D, self).__init__(*args, **kwargs)
-
-        self.erd_model: nn.Module = ERD_Encoder(3, 3)
+        self.si_encoder: nn.Module = SI_Encoder(3, 3)
 
         self.se_model = se_model
-        self.me_model = me_model
+        self.fp_model = fp_model
 
     def forward(
         self,
@@ -47,43 +35,14 @@ class SMNet2D(nn.Module):
 
         features = self.se_model(combine_features)
 
-        mask = self.me_model(torch.hstack((features.detach() if isDetachMEM else features, frame, empty_frame)))
+        mask = self.fp_model(torch.hstack((features.detach() if isDetachMEM else features, frame, empty_frame)))
 
         return mask, frame, features
 
 
-class SMNet3to2D(nn.Module):
-    def __init__(self, se_model: nn.Module, me_model: nn.Module, *args, **kwargs) -> None:
-        super(SMNet3to2D, self).__init__(*args, **kwargs)
-
-        self.erd_model: nn.Module = ERD_Encoder(3, 3)
-
-        self.se_model = se_model
-        self.me_model = me_model
-
-    def forward(
-        self,
-        frame: torch.Tensor,
-        empty_frame: torch.Tensor,
-        features: torch.Tensor,
-        bg_only_imgs: torch.Tensor,
-        isDetachMEM: bool = False,
-    ):
-        frame = frame.squeeze(1)
-        empty_frame = empty_frame.squeeze(1)
-        bg_only_imgs = bg_only_imgs.unsqueeze(1)
-
-        features = self.se_model(torch.hstack((features, bg_only_imgs)))
-        b, c, d = features.shape[:3]
-        features_2d = features.reshape(b, c * d, *features.shape[3:])
-        mask = self.me_model(torch.hstack((features_2d.detach() if isDetachMEM else features_2d, frame, empty_frame)))
-
-        return mask, frame, features
-
-
-class ERD_Encoder(nn.Module):
+class SI_Encoder(nn.Module):
     def __init__(self, in_channel: int, out_channel: int) -> None:
-        super(ERD_Encoder, self).__init__()
+        super(SI_Encoder, self).__init__()
         # empty, reference, diff(reference - current), current frame encode
         self.cnn1 = nn.Sequential(nn.Conv3d(in_channel, in_channel, 3, padding=1), nn.ReLU(), nn.BatchNorm3d(in_channel))
         self.se = SELayer(in_channel, reduction=3, is3D=True)

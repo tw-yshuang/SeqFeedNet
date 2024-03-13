@@ -223,39 +223,3 @@ def weighted_crossentropy(true, pred, weight_pos=15, weight_neg=1):
     weight_vector = true * weight_pos + (1.0 - true) * weight_neg
     weighted_bce = weight_vector * bce
     return -torch.mean(weighted_bce)
-
-
-if __name__ == '__main__':
-    import os, sys
-    import cv2
-    from pathlib import Path
-    import torchvision.transforms as tvtf
-
-    sys.path.append(str(Path(__file__).resolve().parents[2]))
-    from utils.data_preprocess import CDNet2014Preprocess
-
-    preprocess = CDNet2014Preprocess((224, 224))
-    gts_pth = "/root/Work/fork-BGS/BSUV-Net-2.0/dataset/currentFr/baseline/highway/groundtruth"
-    imgs_name = sorted(os.listdir(gts_pth))
-
-    gts = list()
-    vid_indices = list()
-    for i, img_name in enumerate(imgs_name[699:]):
-        if img_name.split('.')[-1] != 'png':
-            continue
-        elif i == 5:
-            break
-
-        img = cv2.imread(os.path.join(gts_pth, img_name), cv2.IMREAD_GRAYSCALE)
-        gt = preprocess(img)
-        gts.append(tvtf.ToTensor()(gt.copy()))
-        vid_indices.append(11)
-
-    device = 'cuda:1' if torch.cuda.is_available() else 'cpu'
-    gts = torch.cat(gts, dim=0).reshape(len(gts), 1, 224, 224).to(device=device)
-    preds = torch.zeros_like(gts, device=device)
-    vid_indices = torch.tensor(vid_indices).reshape(5, 1).to(device=device, dtype=torch.int32)
-
-    result1 = IOULoss4CDNet2014(reduction='none').to(device)(gts, preds)
-    result2 = IOULoss4CDNet2014(reduction='mean').to(device)(gts, preds)
-    print(result1, result1.mean(), result2)

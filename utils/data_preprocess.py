@@ -72,31 +72,3 @@ class LASIESTAPreprocess:
         )
 
         return label
-
-
-if __name__ == '__main__':
-    import sys
-    from pathlib import Path
-
-    from torchvision.io import read_image, write_png
-
-    PROJECT_DIR = Path(__file__).resolve().parents[1]
-    sys.path.append(str(PROJECT_DIR))
-
-    from submodules.UsefulFileTools.FileOperator import get_filenames
-
-    filenames = sorted(get_filenames('Data/currentFr/**/groundtruth', '*.png'))
-    print(len(filenames))
-
-    # ! Test for CDNet2014
-    data_processes = CDNet2014Preprocess(image_size=(244, 244), isShadowFG=False, eps=3)  # all pass
-    for i, filename in enumerate([filenames[9842], filenames[26842], filenames[65697], filenames[115181], filenames[125681]]):
-        print(filename)
-        img = read_image(filename)
-        print(img.shape, end=' ')
-        convert_img = data_processes(img)
-        print(torch.any(convert_img == 0.0), torch.any(convert_img == 1.0), torch.any(convert_img == -1.0))
-        convert_img[convert_img == -1] = 127
-        convert_img[convert_img == 1] = 255
-        write_png(img, f'test/original_{i}.png')
-        write_png(convert_img.type(torch.uint8), f'test/convert_{i}.png')

@@ -2,8 +2,8 @@ import click
 
 help_doc = {
     'se_network': "Sequence Extract Network",
-    'me_network': "Mask Extract Network",
-    'sm_network': "Sequence to mask Network",
+    'fp_network': "Foreground Probability Network",
+    'sf_network': "Sequential Feedback Network",
     'loss_func': "Please check utils/evaluate/losses.py to find others",
     'optimizer': "Optimizer that provide by Pytorch",
     'learning_rate': "Learning Rate for optimizer",
@@ -24,8 +24,8 @@ help_doc = {
 
 @click.command(context_settings=dict(help_option_names=['-h', '--help'], max_content_width=120))
 @click.option('-se', '--se_network', default='UNetVgg16', help=help_doc['se_network'])
-@click.option('-me', '--me_network', default='UNetVgg16', help=help_doc['me_network'])
-@click.option('-sm', '--sm_network', default='SMNet2D', help=help_doc['sm_network'])
+@click.option('-fp', '--fp_network', default='UNetVgg16', help=help_doc['fp_network'])
+@click.option('-sf', '--sf_network', default='SeqFeedNet', help=help_doc['sf_network'])
 @click.option('-loss', '--loss_func', default='IOULoss4CDNet2014', help=help_doc['loss_func'])
 @click.option('-opt', '--optimizer', default='', help=help_doc['optimizer'])
 @click.option('-lr', '--learning_rate', default=1e-4, help=help_doc['learning_rate'])
@@ -43,8 +43,8 @@ help_doc = {
 @click.option('-out', '--output', default='', help=help_doc['output'])
 def cli(
     se_network: str,
-    me_network: str,
-    sm_network: str,
+    fp_network: str,
+    sf_network: str,
     loss_func: str,
     optimizer: str,
     learning_rate: float,
@@ -65,8 +65,8 @@ def cli(
 
     parser = convertStr2Parser(
         se_network,
-        me_network,
-        sm_network,
+        fp_network,
+        sf_network,
         loss_func,
         optimizer,
         learning_rate,
@@ -88,9 +88,4 @@ def cli(
 
 
 if __name__ == '__main__':
-    # import sys
-
-    # sys.argv = 'training.py --device 1 -epochs 0 -workers 2 -cv 2 --pretrain_weight out/1211-0444_iouLoss.112_SMNet2D.UNetVgg16-UNetVgg16_Adam1.0e-04_IOULoss_BS-27_Set-2/bestAcc-F_score.pt --do_testing'.split()
-    # sys.argv = 'training.py --device 1 -epochs 2 --batch_size 8 -workers 8 -cv 2 -imghw 112-112 -use-t2val -opt Adam -wd 0.01 -out test'.split()
-    # sys.argv = 'training.py --device 7 -epochs 119 --batch_size 9 -workers 9 -cv 4 -imghw 224-224 -use-t2val --pretrain_weight out/0130-1336_dev4.maxGAP15.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-4/checkpoint_e080.pt -out dev4.maxGAP15.cv2.to200.224'.split()
     cli()
