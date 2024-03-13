@@ -1,5 +1,6 @@
 Data/
 out/
+weights/
 test/
 
 # Byte-compiled / optimized / DLL files

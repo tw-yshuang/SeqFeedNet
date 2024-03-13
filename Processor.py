@@ -425,7 +425,7 @@ def convertStr2Parser(
     parser.DEVICE = get_device(device)
     #! ========== Network ==========
     parser.PRETRAIN_WEIGHT = pretrain_weight
-    if pretrain_weight != '':
+    if pretrain_weight != '' and 'cv' not in pretrain_weight.split('/')[-1]:  # general & paper_proposed
         sm_network, nets = pretrain_weight.split('/')[-2].split('_')[-5].split('.')
         se_network, me_network = nets.split('-')
     parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
@@ -434,7 +434,7 @@ def convertStr2Parser(
 
     #! ========== Hyperparameter ==========
     if optimizer == '':
-        if pretrain_weight == '':
+        if pretrain_weight == '' or 'cv' in pretrain_weight.split('/')[-1]:  # general or paper_proposed
             optimizer = 'Adam'
         else:
             optimizer = re.match(r'^[A-Za-z]+', pretrain_weight.split('/')[-2].split('_')[-4]).group(0)
