@@ -42,7 +42,4 @@ def cli(
 
 
 if __name__ == '__main__':
-    # import sys
-
-    # sys.argv = ' testing.py -cv 4 --device 4 -weight out/0119-0949_dev3.adamW.maxGAP15.cv4.224_SMNet2D.UNetVgg16-UNetVgg16_AdamW1.0e-04.wd0.0_IOULoss_BS-9_Set-4/bestAcc-F_score.pt -save'.split()
     cli()

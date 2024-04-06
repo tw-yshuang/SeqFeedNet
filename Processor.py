@@ -1,4 +1,5 @@
 import re, sys, time, random
+from collections import OrderedDict
 from pathlib import Path
 from typing import Callable, Generator, List, Tuple
 
@@ -14,12 +15,11 @@ from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
 
 from models.unet import *
-from models.Unet3D import *
-from models.SEMwithMEM import *
+from models.SeqFeedNet import *
 from utils.transforms import *
 from utils.evaluate.losses import *
 from models.unet import UNetVgg16 as BackBone
-from models.SEMwithMEM import SMNet2D as Model
+from models.SeqFeedNet import SeqFeedNet as Model
 from utils.ResultOperator import ResultOperator
 from utils.data_process import CDNet2014Dataset
 from utils.data_process import get_data_LoadersAndSet, DatasetConfig
@@ -95,7 +95,7 @@ class Processor:
             return
 
         hw = dataset.data_infos[idx][1].ROI_mask.shape[-2:]
-        if str(self.model.me_model) == 'UNetVgg16':
+        if str(self.model.fp_model) == 'UNetVgg16':
             h, w = int(hw[0] // 16 * 16), int(hw[1] // 16 * 16)  # for fix the UNet concat dimension problem
         else:
             h, w = int(hw[0]), int(hw[1])
@@ -149,7 +149,7 @@ class Processor:
                     else:
                         frame, empty_frame, label, features = self.test_transforms(frame, empty_frame, label, features)
                         bg_only_img = features[:, 0]
-                        features = self.model.erd_model(features)
+                        features = self.model.si_encoder(features)
 
                     pred, frame, features = self.model(frame, empty_frame, features, bg_only_img)
                     loss: torch.Tensor = self.loss_func(pred, label)
@@ -292,7 +292,7 @@ class Processor:
                 frames, empty_frames, labels, features = transforms(frames, empty_frames, labels, features)
 
             bg_only_imgs = features[:, 0]
-            features = self.model.erd_model(features)
+            features = self.model.si_encoder(features)
             # losses = torch.zeros(frames.shape[1], dtype=torch.float32, device=self.device)
             step_noDetachMEM = frames.shape[1] - 1
             for step in range(frames.shape[1]):
@@ -339,7 +339,7 @@ class Processor:
             model = torch.load(path)
             optimizer = torch.load(optimizer_path)
         else:
-            model.load_state_dict(torch.load(path, map_location=device))
+            model.load_state_dict(mapping_new_weight_key(torch.load(path, map_location=device)))
 
             if Path(optimizer_path).exists():
                 optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
@@ -347,10 +347,44 @@ class Processor:
         return model, optimizer
 
 
+def mapping_new_weight_key(weights: OrderedDict[str, torch.Tensor]):
+    """
+    The function `mapping_new_weight_key` updates keys in an OrderedDict based on a predefined
+    replacement dictionary.
+
+    Args:
+      weights (OrderedDict[str, torch.Tensor]): An OrderedDict containing keys of type str and values of
+    type torch.Tensor.
+
+    Returns:
+      The function `mapping_new_weight_key` returns an `OrderedDict` where some keys have been updated
+    based on the `replace_dict` mapping provided in the function. Keys that match the keys in the
+    `replace_dict` are replaced with the corresponding values specified in the `replace_dict`, while
+    other keys remain unchanged.
+    """
+
+    update_key_model = OrderedDict()
+    replace_dict = {
+        'erd_model': (len('erd_model'), 'si_encoder'),
+        'me_model': (len('me_model'), 'fp_model'),
+    }
+    for k, v in weights.items():
+        noReplace = True
+        for replace_key, replace_info in replace_dict.items():
+            if replace_key == k[: replace_info[0]]:
+                update_key_model[k.replace(replace_key, replace_info[1])] = v
+                noReplace = False
+                break
+        if noReplace:
+            update_key_model[k] = v
+
+    return update_key_model
+
+
 class Parser:
     SE_Net: nn.Module | BackBone
-    ME_Net: nn.Module | BackBone
-    SM_Net: nn.Module | Model
+    FP_Net: nn.Module | BackBone
+    SF_Net: nn.Module | Model
     DEVICE: int
 
     LOSS: nn.Module | Loss
@@ -375,8 +409,8 @@ class Parser:
 
 def convertStr2Parser(
     se_network: str = 'UNetVgg16',
-    me_network: str = 'UNetVgg16',
-    sm_network: str = 'SMNet2D',
+    fp_network: str = 'UNetVgg16',
+    sf_network: str = 'SeqFeedNet',
     loss_func: str = 'IOULoss4CDNet2014',
     optimizer: str = '',
     learning_rate: float = 1e-4,
@@ -398,8 +432,8 @@ def convertStr2Parser(
     '''
     Args
         se_network: "Sequence Extract Network",
-        me_network: "Mask Extract Network",
-        sm_network: "Sequence to mask Network",
+        fp_network: "Mask Extract Network",
+        sf_network: "Sequence to mask Network",
         loss_func: "Please check utils/evaluate/losses.py to find others",
         optimizer: "Optimizer that provide by Pytorch",
         learning_rate: "Learning Rate for optimizer",
@@ -425,16 +459,16 @@ def convertStr2Parser(
     parser.DEVICE = get_device(device)
     #! ========== Network ==========
     parser.PRETRAIN_WEIGHT = pretrain_weight
-    if pretrain_weight != '':
-        sm_network, nets = pretrain_weight.split('/')[-2].split('_')[-5].split('.')
-        se_network, me_network = nets.split('-')
+    if pretrain_weight != '' and 'cv' not in pretrain_weight.split('/')[-1]:  # general & paper_proposed
+        sf_network, nets = pretrain_weight.split('/')[-2].split('_')[-5].split('.')
+        se_network, fp_network = nets.split('-')
     parser.SE_Net: nn.Module | BackBone = getattr(module_locate, se_network)
-    parser.ME_Net: nn.Module | BackBone = getattr(module_locate, me_network)
-    parser.SM_Net: nn.Module | Model = getattr(module_locate, sm_network)
+    parser.FP_Net: nn.Module | BackBone = getattr(module_locate, fp_network)
+    parser.SF_Net: nn.Module | Model = getattr(module_locate, sf_network)
 
     #! ========== Hyperparameter ==========
     if optimizer == '':
-        if pretrain_weight == '':
+        if pretrain_weight == '' or 'cv' in pretrain_weight.split('/')[-1]:  # general or paper_proposed
             optimizer = 'Adam'
         else:
             optimizer = re.match(r'^[A-Za-z]+', pretrain_weight.split('/')[-2].split('_')[-4]).group(0)
@@ -535,14 +569,14 @@ def execute(parser: Parser):
 
     #! ========== Network ==========
     se_model: nn.Module = parser.SE_Net(4, 3) if '3D' in parser.SE_Net.__name__ else parser.SE_Net(12, 9)
-    me_model: nn.Module = parser.ME_Net(15, 1)
-    sm_net: nn.Module = parser.SM_Net(se_model, me_model).to(parser.DEVICE)
-    optimizer: optim.Optimizer = parser.OPTIMIZER(sm_net.parameters(), lr=parser.LEARNING_RATE, weight_decay=parser.WEIGHT_DECAY)
+    fp_model: nn.Module = parser.FP_Net(15, 1)
+    SF_Net: nn.Module = parser.SF_Net(se_model, fp_model).to(parser.DEVICE)
+    optimizer: optim.Optimizer = parser.OPTIMIZER(SF_Net.parameters(), lr=parser.LEARNING_RATE, weight_decay=parser.WEIGHT_DECAY)
     loss_func: nn.Module = parser.LOSS(reduction='mean')
 
     #! ========== Load Pretrain ==========
     if parser.PRETRAIN_WEIGHT != '':
-        sm_net, optimizer = Processor.load(parser.PRETRAIN_WEIGHT, sm_net, optimizer, device=parser.DEVICE)
+        SF_Net, optimizer = Processor.load(parser.PRETRAIN_WEIGHT, SF_Net, optimizer, device=parser.DEVICE)
 
     #! ========= Create saveDir ==========
     split_id = parser.PRETRAIN_WEIGHT.rfind('/') + 1
@@ -557,7 +591,7 @@ def execute(parser: Parser):
             path = parser.PRETRAIN_WEIGHT[split_id:]
         saveDir += path.split('_')[0]
     else:
-        model_name = f'{sm_net.__class__.__name__}.{se_model.__class__.__name__}-{me_model.__class__.__name__}'
+        model_name = f'{SF_Net.__class__.__name__}.{se_model.__class__.__name__}-{fp_model.__class__.__name__}'
         optimizer_name = f'{optimizer.__class__.__name__}{optimizer.defaults["lr"]:.1e}.wd{parser.WEIGHT_DECAY}'
         saveDir += f'{time.strftime("%m%d-%H%M")}_{parser.OUT}_{model_name}_{optimizer_name}_{str(loss_func)}_BS-{parser.BATCH_SIZE}_Set-{parser.CV_SET}'
 
@@ -565,7 +599,7 @@ def execute(parser: Parser):
 
     #! ========== Model Setting ==========
     processor = Processor(
-        sm_net,
+        SF_Net,
         optimizer,
         train_iter_compose,
         test_iter_compose,
