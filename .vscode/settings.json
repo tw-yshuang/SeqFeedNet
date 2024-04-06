@@ -1,0 +1,55 @@
+{
+    "editor.tabSize": 4,
+    "editor.wordWrapColumn": 135,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+        "editor.formatOnType": true
+    },
+    "black-formatter.args": [
+        "--line-length",
+        "135",
+        "--skip-string-normalization"
+    ],
+    "[markdown]": {
+        "editor.defaultFormatter": "DavidAnson.vscode-markdownlint"
+    },
+    "markdownlint.config": {
+        "MD024": {
+            "allow_different_nesting": true
+        },
+        "MD025": {
+            "level": 1
+        },
+        "MD029": {
+            "style": "ordered"
+        },
+        "MD033": {
+            "allowed_elements": [
+                "font"
+            ]
+        },
+        "MD049": {
+            "style": "asterisk"
+        }
+    },
+    "cSpell.words": [
+        "BSUV",
+        "drate",
+        "dsize",
+        "groundtruth",
+        "hflip",
+        "hstack",
+        "imghw",
+        "Jaccard",
+        "keepdim",
+        "nparray",
+        "Prec",
+        "tensorboard",
+        "tlhw",
+        "torchvision",
+        "tvtf",
+        "unet",
+        "unsqueeze",
+        "vflip"
+    ]
+}

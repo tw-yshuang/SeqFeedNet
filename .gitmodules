@@ -1,0 +1,3 @@
+[submodule "submodules/UsefulFileTools"]
+	path = submodules/UsefulFileTools
+	url = git@github.com:tw-yshuang/UsefulFileTools.git

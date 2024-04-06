@@ -1,3 +1,9 @@
+Data/
+out/
+weights/
+test/
+weights/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
