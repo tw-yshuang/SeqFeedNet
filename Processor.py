@@ -297,7 +297,6 @@ class Processor:
             step_noDetachMEM = frames.shape[1] - 1
             for step in range(frames.shape[1]):
                 isDetachMEM = 1 - (step // step_noDetachMEM)
-                # isDetachMEM = 0
                 frame, empty_frame, label = frames[:, step], empty_frames[:, step], labels[:, step]
 
                 # features = features.detach()  # create a new tensor to detach previous computational graph
