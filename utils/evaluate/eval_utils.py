@@ -73,12 +73,13 @@ class OneEpochVideosAccumulator:
         for feature in result:
             # feature: (tp, fp, tn, fn, loss, video_id)
 
-            vid_matrix = self.vid_matrix.setdefault(int(feature[-1]), torch.zeros_like(self.batchLevel_matrix))
-            vid_matrix[:-1] += feature[:-1]
-            vid_matrix[-1] += 1
+            if feature[:-2].sum() != 0.0:  # sometimes gt will fill up with -1, which doesn't count.
+                vid_matrix = self.vid_matrix.setdefault(int(feature[-1]), torch.zeros_like(self.batchLevel_matrix))
+                vid_matrix[:-1] += feature[:-1]
+                vid_matrix[-1] += 1
 
-            self.batchLevel_matrix[:-2] += feature[:-2]
-            self.batchLevel_matrix[-1] += 1
+                self.batchLevel_matrix[:-2] += feature[:-2]
+                self.batchLevel_matrix[-1] += 1
 
 
 class BasicRecord:
@@ -157,8 +158,8 @@ class SummaryRecord:
         self.batchLevel = BasicRecord('BatchLevel', num_epochs)  # external manipulate
 
     def records(self, videosAccumulator: OneEpochVideosAccumulator):
-        vid: int
-        k: torch.Tensor
+        vid: int  # video_id
+        k: torch.Tensor  # [tp, fp, tn, fn, loss, accumulative_times]
         for vid, k in videosAccumulator.vid_matrix.items():
             cid = vid // 10
 
@@ -232,8 +233,8 @@ if __name__ == "__main__":
                 break
 
             img = cv.imread(os.path.join(gts_pth, img_name), cv.IMREAD_GRAYSCALE)
-            gt = preprocess(img)
-            gts.append(tvtf.ToTensor()(gt.copy()))
+            gt = preprocess(tvtf.ToTensor()(img))
+            gts.append(gt)
             video_ids.append(11)
             # gt[gt == 1] = 255
             # gt[gt == -1] = 128

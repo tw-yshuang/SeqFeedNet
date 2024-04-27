@@ -297,6 +297,7 @@ class Processor:
             step_noDetachMEM = frames.shape[1] - 1
             for step in range(frames.shape[1]):
                 isDetachMEM = 1 - (step // step_noDetachMEM)
+                # isDetachMEM = 0
                 frame, empty_frame, label = frames[:, step], empty_frames[:, step], labels[:, step]
 
                 # features = features.detach()  # create a new tensor to detach previous computational graph
@@ -312,8 +313,9 @@ class Processor:
 
                 with torch.no_grad():
                     bg_only_imgs, pred_mask = self.get_bgOnly_and_mask(frame, pred)
-                    videos_accumulator.batchLevel_matrix[-2] += loss.item()  # batchLevel loss is different with others
-                    videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
+                    if step > 2:
+                        videos_accumulator.batchLevel_matrix[-2] += loss.item()  # batchLevel loss is different with others
+                        videos_accumulator.accumulate(self.eval_measure(label, pred, pred_mask, video_id))
 
     def get_bgOnly_and_mask(self, frame: torch.Tensor, pred: torch.Tensor):
         pred_mask = torch.where(pred > self.eval_measure.thresh, 1, 0).type(dtype=torch.int32)
