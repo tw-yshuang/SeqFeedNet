@@ -135,3 +135,15 @@ From Frame 1 (initialize) to Frame 3, it is obvious that the sequential features
 | As BG              | ![peopleInShade-hit](./figures/peopleInShade-hit.png)   |
 
 The result shows that the sequential features can divide the shadow shape to prevent misjudgment of the shadow as foreground.
+
+## Citation
+```bibtex
+@InProceedings{SeqFeedNet,
+    author    = {Huang, Yu-Shun and Guo, Jing-Ming and Yang, Yi-Xiang},
+    title     = {SeqFeedNet: Sequential Feature Feedback Network for Background Subtraction},
+    booktitle = {Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
+    month     = {March},
+    year      = {2026},
+    pages     = {8199-8208}
+}
+```
